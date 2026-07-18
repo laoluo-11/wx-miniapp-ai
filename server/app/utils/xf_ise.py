@@ -55,9 +55,9 @@ def _wav_to_pcm(wav_bytes):
 
 
 def _parse_xml_result(xml_str):
-    """解析讯飞返回的XML评测结果，提取关键分数"""
+    """解析讯飞返回的XML评测结果，提取句子/单词/音节/音素各级评分"""
     import xml.etree.ElementTree as ET
-    result = {"score": 0, "comment": "", "dimensions": []}
+    result = {"score": 0, "comment": "", "dimensions": [], "words": []}
     
     try:
         root = ET.fromstring(xml_str)
@@ -79,23 +79,84 @@ def _parse_xml_result(xml_str):
                 {"name": "标准度", "score": round(standard)},
             ]
             
-            # 生成评语
+            # 提取单词级别评分
+            words = []
+            for word_node in read_node.iter('word'):
+                content = word_node.get('content', '')
+                word_score = float(word_node.get('total_score', 0))
+                dp_msg = int(word_node.get('dp_message', 0))
+                
+                # dp_message: 0=正常, 16=漏读, 32=增读, 64=回读, 128=替换
+                status_map = {0: "ok", 16: "missed", 32: "extra", 64: "repeat", 128: "replace"}
+                status = status_map.get(dp_msg, "unknown")
+                
+                # 提取音节
+                sylls = []
+                for syll_node in word_node.iter('syll'):
+                    syll_content = syll_node.get('content', '')
+                    syll_score = float(syll_node.get('syll_score', 0))
+                    serr = int(syll_node.get('serr_msg', 0)) if syll_node.get('serr_msg') else 0
+                    syll_error = serr in (1, 2049)
+                    
+                    # 提取音素
+                    phones = []
+                    for ph in syll_node.iter('phone'):
+                        ph_content = ph.get('content', '')
+                        ph_dp = int(ph.get('dp_message', 0))
+                        is_yun = ph.get('is_yun', '0')
+                        perr = int(ph.get('perr_msg', 0)) if ph.get('perr_msg') else 0
+                        tone = ph.get('mono_tone', '')
+                        
+                        ph_type = "vowel" if is_yun == "1" else "consonant"
+                        ph_error = ph_dp != 0 or perr != 0
+                        
+                        phones.append({
+                            "content": ph_content,
+                            "type": ph_type,
+                            "error": ph_error,
+                            "tone": tone,
+                        })
+                    
+                    sylls.append({
+                        "content": syll_content,
+                        "score": round(syll_score),
+                        "error": syll_error,
+                        "phones": phones,
+                    })
+                
+                words.append({
+                    "content": content,
+                    "score": round(word_score),
+                    "status": status,
+                    "sylls": sylls,
+                })
+            
+            result["words"] = words
+            
+            # 生成评语 + 错误单词统计
+            error_words = [w for w in words if w["status"] != "ok"]
             if total >= 90:
                 result["comment"] = "非常棒！发音准确，表达流畅。"
             elif total >= 75:
-                result["comment"] = "表现不错，可以注意个别单词的发音和连读。"
+                detail = ""
+                if error_words:
+                    detail = f"其中{len(error_words)}个单词需要改进。"
+                result["comment"] = f"表现不错，可以注意个别单词的发音和连读。{detail}"
             elif total >= 60:
-                result["comment"] = "继续加油，建议多跟读原声材料练习发音。"
+                detail = ""
+                if error_words:
+                    bad_words = ", ".join(w["content"] for w in error_words[:5])
+                    detail = f"重点练习: {bad_words}。"
+                result["comment"] = f"继续加油，建议多跟读原声材料。{detail}"
             else:
                 result["comment"] = "需要更多练习，建议从基础发音开始，逐步提高。"
-        else:
-            # 尝试 word 题型
+        
+        elif root.find('.//read_word') is not None:
             word_node = root.find('.//read_word')
-            if word_node is not None:
-                total = float(word_node.get('total_score', 0))
-                result["score"] = round(total)
-                result["dimensions"] = [{"name": "总分", "score": round(total)}]
-                result["comment"] = "评测完成。"
+            total = float(word_node.get('total_score', 0))
+            result["score"] = round(total)
+            result["dimensions"] = [{"name": "总分", "score": round(total)}]
+            result["comment"] = "评测完成。"
             
     except Exception as e:
         result["comment"] = f"解析结果出错: {str(e)[:100]}"
