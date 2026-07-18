@@ -171,54 +171,62 @@ def _parse_xml_result(xml_str):
 
 
 async def assess(audio_data: bytes, text: str, category: str = "read_sentence", ent: str = "en_vip"):
-    """调用讯飞ISE评测（流式分帧发送音频）"""
-    # 去除WAV头，提取原始PCM
+    """
+    调用讯飞ISE评测（流式分帧发送音频）
+    """
     pcm_data = _wav_to_pcm(audio_data)
-    text_b64 = base64.b64encode(text.encode("utf-8")).decode()
+    # 文本加 UTF-8 BOM 头再 base64
+    text_b64 = base64.b64encode(('\ufeff' + text).encode("utf-8")).decode()
     
-    # 分帧：每帧约1280字节PCM（约40ms），base64后约1707字节
-    CHUNK_SIZE = 1280
+    # 分帧音频
+    CHUNK_SIZE = 640
     chunks = []
     for i in range(0, len(pcm_data), CHUNK_SIZE):
         chunk = pcm_data[i:i+CHUNK_SIZE]
         chunks.append(base64.b64encode(chunk).decode())
-    if not chunks:
-        chunks = [""]
+    if not chunks: chunks = [""]
     
     url = _build_auth_url()
-    
-    # 首帧：业务参数 + 文本 + 第一块音频
-    first_frame = {
-        "common": {"app_id": "16fe0688"},
-        "business": {
-            "cmd": "auw", "aus": 1,
-            "ent": ent, "category": category,
-            "aue": "raw", "auf": "audio/L16;rate=16000",
-            "rst": "utf8", "tte": "utf-8",
-            "text": text_b64,
-        },
-        "data": {"status": 0, "data": chunks[0]},
-    }
-    
     final_result = None
     
     try:
         async with websockets.connect(url, ping_interval=10, close_timeout=10) as ws:
-            # 发送首帧
-            await ws.send(json.dumps(first_frame))
+            # 帧1: ssb (参数上传)
+            ssb_frame = {
+                "common": {"app_id": "16fe0688"},
+                "business": {
+                    "sub": "ise",
+                    "cmd": "ssb",
+                    "ent": ent,
+                    "category": category,
+                    "aue": "raw",
+                    "auf": "audio/L16;rate=16000",
+                    "text": text_b64,
+                    "rst": "utf8",
+                    "tte": "utf-8",
+                },
+                "data": {"status": 0, "data": ""},
+            }
+            await ws.send(json.dumps(ssb_frame))
             
-            # 发送中间帧（逐块发送剩余音频）
-            for chunk in chunks[1:]:
-                await asyncio.sleep(0.04)
-                mid = {"business": {"cmd": "auw", "aus": 1}, "data": {"status": 1, "data": chunk}}
-                await ws.send(json.dumps(mid))
+            # 帧2+: auw (音频上传)
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    aus = 1; st = 0
+                elif i == len(chunks) - 1:
+                    aus = 4; st = 2
+                else:
+                    aus = 2; st = 1
+                
+                audio_frame = {
+                    "business": {"sub": "ise", "cmd": "auw", "aus": aus},
+                    "data": {"status": st, "data": chunk},
+                }
+                await ws.send(json.dumps(audio_frame))
+                await asyncio.sleep(0.03)
             
-            # 发送末帧
-            await asyncio.sleep(0.04)
-            end = {"business": {"cmd": "auw", "aus": 1}, "data": {"status": 2, "data": ""}}
-            await ws.send(json.dumps(end))
-            
-            # 接收结果
+            await asyncio.sleep(0.5)
+            # 等待结果
             async for msg in ws:
                 data = json.loads(msg)
                 code = data.get("code", -1)
@@ -227,9 +235,11 @@ async def assess(audio_data: bytes, text: str, category: str = "read_sentence", 
                 
                 raw = data.get("data", {}).get("data", "")
                 if raw:
-                    xml_bytes = base64.b64decode(raw)
-                    xml_str = xml_bytes.decode("utf-8")
-                    final_result = _parse_xml_result(xml_str)
+                    try:
+                        xml_str = base64.b64decode(raw).decode("utf-8")
+                        final_result = _parse_xml_result(xml_str)
+                    except Exception as e:
+                        raise Exception(f"parse fail: {str(e)[:100]}")
                 
                 if data.get("data", {}).get("status", 0) == 2:
                     break
