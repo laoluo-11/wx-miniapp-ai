@@ -17,8 +17,9 @@ ISE_PATH = "/v2/open-ise"
 ISE_URL = f"wss://{ISE_HOST}{ISE_PATH}"
 
 def _build_auth_url():
-    """生成带签名的 WebSocket URL"""
+    """生成带签名的 WebSocket URL（参数需URL编码）"""
     import datetime
+    from urllib.parse import quote
     now = datetime.datetime.utcnow()
     date = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
     
@@ -27,11 +28,16 @@ def _build_auth_url():
         hmac.new(XF_API_SECRET.encode(), signature_origin.encode(), hashlib.sha256).digest()
     ).decode()
     
-    authorization = base64.b64encode(
-        f'api_key="{XF_API_KEY}",algorithm="hmac-sha256",headers="host date request-line",signature="{signature}"'.encode()
-    ).decode()
+    auth_origin = f'api_key="{XF_API_KEY}",algorithm="hmac-sha256",headers="host date request-line",signature="{signature}"'
+    authorization = base64.b64encode(auth_origin.encode()).decode()
     
-    return f"{ISE_URL}?authorization={authorization}&date={date}&host={ISE_HOST}"
+    # URL编码参数（base64含+/=，日期含空格逗号）
+    return (
+        f"{ISE_URL}"
+        f"?authorization={quote(authorization)}"
+        f"&date={quote(date)}"
+        f"&host={quote(ISE_HOST)}"
+    )
 
 
 def _wav_to_pcm(wav_bytes):
@@ -187,7 +193,7 @@ async def assess(audio_data: bytes, text: str, category: str = "read_sentence", 
     
     # 首帧参数
     first_frame = {
-        "common": {"app_id": XF_API_KEY},
+        "common": {"app_id": "16fe0688"},
         "business": {
             "cmd": "auw",
             "aus": 1,
@@ -235,7 +241,7 @@ async def assess(audio_data: bytes, text: str, category: str = "read_sentence", 
                 data = json.loads(msg)
                 code = data.get("code", -1)
                 if code != 0:
-                    raise Exception(f"讯飞返回错误: code={code}, message={data.get('message', '')}")
+                    raise Exception(f"讯飞ISE错误 code={code} msg='{data.get('message','')}' sid={data.get('sid','')}")
                 
                 # 解析返回数据
                 raw = data.get("data", {}).get("data", "")
