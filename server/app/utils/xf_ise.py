@@ -171,98 +171,76 @@ def _parse_xml_result(xml_str):
 
 
 async def assess(audio_data: bytes, text: str, category: str = "read_sentence", ent: str = "en_vip"):
-    """
-    调用讯飞ISE评测
-    
-    Args:
-        audio_data: 音频数据（WAV格式，16kHz 16bit 单声道）
-        text: 评测参考文本
-        category: 题型，read_sentence/read_chapter/read_word
-        ent: 引擎，en_vip=英文，cn_vip=中文
-    
-    Returns:
-        {"score": int, "comment": str, "dimensions": [...]}
-    """
-    # 去除WAV头，提取PCM
+    """调用讯飞ISE评测（流式分帧发送音频）"""
+    # 去除WAV头，提取原始PCM
     pcm_data = _wav_to_pcm(audio_data)
-    # Base64编码
-    audio_b64 = base64.b64encode(pcm_data).decode()
     text_b64 = base64.b64encode(text.encode("utf-8")).decode()
+    
+    # 分帧：每帧约1280字节PCM（约40ms），base64后约1707字节
+    CHUNK_SIZE = 1280
+    chunks = []
+    for i in range(0, len(pcm_data), CHUNK_SIZE):
+        chunk = pcm_data[i:i+CHUNK_SIZE]
+        chunks.append(base64.b64encode(chunk).decode())
+    if not chunks:
+        chunks = [""]
     
     url = _build_auth_url()
     
-    # 首帧参数
+    # 首帧：业务参数 + 文本 + 第一块音频
     first_frame = {
         "common": {"app_id": "16fe0688"},
         "business": {
-            "cmd": "auw",
-            "aus": 1,
-            "ent": ent,
-            "category": category,
-            "aue": "raw",
-            "auf": "audio/L16;rate=16000",
-            "rst": "utf8",
-            "tte": "utf-8",
+            "cmd": "auw", "aus": 1,
+            "ent": ent, "category": category,
+            "aue": "raw", "auf": "audio/L16;rate=16000",
+            "rst": "utf8", "tte": "utf-8",
             "text": text_b64,
         },
-        "data": {
-            "status": 0,
-            "data": audio_b64,
-        },
-    }
-    
-    # 中间帧（同一音频作为完整数据，status=1）
-    mid_frame = {
-        "business": {"cmd": "auw", "aus": 1},
-        "data": {"status": 1, "data": audio_b64},
-    }
-    
-    # 末帧
-    end_frame = {
-        "business": {"cmd": "auw", "aus": 1},
-        "data": {"status": 2, "data": ""},
+        "data": {"status": 0, "data": chunks[0]},
     }
     
     final_result = None
     
     try:
-        async with websockets.connect(url, ping_interval=10, close_timeout=5) as ws:
+        async with websockets.connect(url, ping_interval=10, close_timeout=10) as ws:
             # 发送首帧
             await ws.send(json.dumps(first_frame))
             
-            # 短暂等待后发送末帧（ISE需要一点处理时间）
-            await asyncio.sleep(0.1)
+            # 发送中间帧（逐块发送剩余音频）
+            for chunk in chunks[1:]:
+                await asyncio.sleep(0.04)
+                mid = {"business": {"cmd": "auw", "aus": 1}, "data": {"status": 1, "data": chunk}}
+                await ws.send(json.dumps(mid))
             
             # 发送末帧
-            await ws.send(json.dumps(end_frame))
+            await asyncio.sleep(0.04)
+            end = {"business": {"cmd": "auw", "aus": 1}, "data": {"status": 2, "data": ""}}
+            await ws.send(json.dumps(end))
             
             # 接收结果
             async for msg in ws:
                 data = json.loads(msg)
                 code = data.get("code", -1)
                 if code != 0:
-                    raise Exception(f"讯飞ISE错误 code={code} msg='{data.get('message','')}' sid={data.get('sid','')}")
+                    raise Exception(f"ISE err code={code} msg='{data.get('message','')}'")
                 
-                # 解析返回数据
                 raw = data.get("data", {}).get("data", "")
                 if raw:
-                    try:
-                        xml_bytes = base64.b64decode(raw)
-                        xml_str = xml_bytes.decode("utf-8")
-                        final_result = _parse_xml_result(xml_str)
-                    except Exception as e:
-                        raise Exception(f"解析评测结果失败: {str(e)[:100]}")
+                    xml_bytes = base64.b64decode(raw)
+                    xml_str = xml_bytes.decode("utf-8")
+                    final_result = _parse_xml_result(xml_str)
                 
-                status = data.get("data", {}).get("status", 0)
-                if status == 2:
+                if data.get("data", {}).get("status", 0) == 2:
                     break
                     
     except asyncio.TimeoutError:
-        raise Exception("讯飞评测超时")
+        raise Exception("ISE timeout")
+    except websockets.exceptions.ConnectionClosed as e:
+        raise Exception(f"ISE closed: {e.code} {e.reason}")
     except Exception as e:
-        raise Exception(f"讯飞评测异常: {str(e)[:200]}")
+        raise Exception(f"ISE error: {str(e)[:200]}")
     
     if final_result is None:
-        raise Exception("未收到评测结果")
-    
+        raise Exception("no result")
     return final_result
