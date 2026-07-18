@@ -23,3 +23,5 @@ MAX_HISTORY = int(os.getenv("MAX_HIST", "10"))
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8080"))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+XF_API_KEY = os.getenv("XF_API_KEY", "")
+XF_API_SECRET = os.getenv("XF_API_SECRET", "")
