@@ -189,6 +189,7 @@ wx-miniapp-ai/
 │           ├── wx_api.py         # 微信 code2session 接口封装
 │           └── llm_client.py     # DeepSeek API 调用封装
 └── database/
+├── uploads/                      # 上传文件目录（Git 忽略）
     ├── schema.sql                # 建表 DDL
     └── backup.sh                 # 数据库备份脚本
 ```
@@ -208,10 +209,11 @@ wx-miniapp-ai/
 
 | 类别 | 技术 | 版本 | 说明 |
 |------|------|------|------|
-| 语言 | Python | 3.11 | conda 环境 |
+| 语言 | Python | 3.10.12 | 系统 Python
 | Web 框架 | FastAPI | 0.115.6 | 异步 HTTP 服务 |
-| ASGI 服务器 | Uvicorn | 0.34.0 | 运行 FastAPI 应用 |
+| ASGI 服务器 | Uvicorn | 0.51.0 | 运行 FastAPI 应用
 | 数据库驱动 | PyMySQL | 1.1.1 | 纯 Python MySQL 客户端 |
+| 文件上传 | python-multipart | - | 文件上传解析 |
 | HTTP 客户端 | httpx | 0.28.1 | 异步 HTTP（调微信/LLM） |
 | 数据库 | MySQL | 5.7 | conda 安装，socket: `/tmp/mysql.sock` |
 | LLM | DeepSeek | deepseek-chat | OpenAI 兼容接口 |
@@ -673,6 +675,95 @@ Authorization: Bearer <token>
 
 ---
 
+### 接口 5b：重命名对话
+
+```http
+PUT /api/v1/chat/conversations/{id}
+Authorization: Bearer <token>
+```
+
+**功能**：修改对话标题。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `title` | string | 是 | 新标题 |
+
+**请求示例**：
+
+```json
+{"title": "新标题"}
+```
+
+**成功响应 (200)**：
+
+```json
+{"msg": "ok"}
+```
+
+---
+
+### 接口 5c：文件上传
+
+```http
+POST /api/v1/chat/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+**功能**：上传图片或文件，返回可访问的 URL。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `file` | file | 是 | 上传的文件 |
+
+**成功响应 (200)**：
+
+```json
+{"url": "https://luois-james.xyz/static/abc123.jpg"}
+```
+
+> 文件保存在服务器 `/home/dfzz/wx-miniapp-ai/uploads/` 目录，通过 `/static/` 路径访问。
+
+---
+
+### 接口 5d：语音测评
+
+```http
+POST /api/v1/voice/assess
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+**功能**：上传英语口语录音，获取 AI 评测结果。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `audio` | file | 是 | 录音文件（wav, 16kHz 单声道, 最长60s）|
+
+**成功响应 (200)**：
+
+```json
+{
+    "score": 85,
+    "comment": "整体表现不错，注意连读与重音位置。",
+    "dimensions": [
+        {"name": "流利度", "score": 86},
+        {"name": "发音", "score": 82},
+        {"name": "准确度", "score": 84},
+        {"name": "完整度", "score": 88}
+    ]
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| score | 综合评分 (0-100) |
+| comment | AI 评语 |
+| dimensions | 各维度评分 |
+
+---
+
+
 ### 接口 6：退出登录
 
 ```http
@@ -810,7 +901,7 @@ GET /
 | 组件 | 版本/要求 |
 |------|-----------|
 | 操作系统 | Linux (Ubuntu 20.04+) |
-| Python | 3.11+ (conda) |
+| Python | 3.10.12 | 系统 Python
 | MySQL | 5.7 (conda, socket `/tmp/mysql.sock`) |
 | Nginx | 1.18+ |
 
@@ -870,7 +961,7 @@ python test_llm.py
 
 ```bash
 cd /home/dfzz/wx-miniapp-ai/server
-nohup uvicorn app.main:app --host 127.0.0.1 --port 8080 > /home/dfzz/logs/uvicorn.log 2>&1 &
+nohup uvicorn app.main:app --host 127.0.0.1 --port 8080 > /home/dfzz/wx-miniapp-ai/server/logs/uvicorn.log 2>&1 &
 ```
 
 **方式 B：systemd 服务（生产推荐）**
@@ -1129,7 +1220,7 @@ SYSPROMPT=你是一个专业的编程助手，擅长 Python 和 JavaScript。回
 
 ```bash
 # nohup 方式
-tail -f /home/dfzz/logs/uvicorn.log
+tail -f /home/dfzz/wx-miniapp-ai/server/logs/uvicorn.log
 
 # systemd 方式
 sudo journalctl -u wx-miniapp-ai -f
@@ -1151,7 +1242,7 @@ sudo systemctl restart wx-miniapp-ai
 # 查找进程并终止
 ps aux | grep uvicorn | grep -v grep | awk '{print $2}' | xargs kill
 # 重新启动
-nohup uvicorn app.main:app --host 127.0.0.1 --port 8080 > /home/dfzz/logs/uvicorn.log 2>&1 &
+nohup uvicorn app.main:app --host 127.0.0.1 --port 8080 > /home/dfzz/wx-miniapp-ai/server/logs/uvicorn.log 2>&1 &
 ```
 
 ### 7.10 微信小程序合法域名配置
