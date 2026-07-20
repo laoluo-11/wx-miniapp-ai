@@ -59,20 +59,30 @@ def _wav_to_pcm(wav_bytes):
 
 
 def _parse_xml_result(xml_str):
-    """解析XML评测结果，提取句子/单词/音节/音素各级评分"""
+    """解析XML评测结果"""
     import xml.etree.ElementTree as ET
     result = {"score": 0, "comment": "", "dimensions": [], "words": []}
-    
     try:
         root = ET.fromstring(xml_str)
-        read_node = root.find('.//read_sentence') or root.find('.//read_chapter')
+        # 找第一个有 total_score 属性的节点
+        read_node = None
+        for el in root.iter():
+            if el.get("total_score"):
+                read_node = el
+                break
         if read_node is not None:
-            total = float(read_node.get('total_score', 0))
-            accuracy = float(read_node.get('accuracy_score', 0))
-            fluency = float(read_node.get('fluency_score', 0))
-            integrity = float(read_node.get('integrity_score', 0))
-            standard = float(read_node.get('standard_score', 0))
-            
+            total = float(read_node.get("total_score", 0))
+            accuracy = float(read_node.get("accuracy_score", 0))
+            fluency = float(read_node.get("fluency_score", 0))
+            integrity = float(read_node.get("integrity_score", 0))
+            standard = float(read_node.get("standard_score", 0))
+            # 0-5分制转0-100
+            if total < 10:
+                total *= 20
+                accuracy *= 20
+                fluency *= 20
+                integrity *= 20
+                standard *= 20
             result["score"] = round(total)
             result["dimensions"] = [
                 {"name": "准确度", "score": round(accuracy)},
@@ -80,84 +90,50 @@ def _parse_xml_result(xml_str):
                 {"name": "完整度", "score": round(integrity)},
                 {"name": "标准度", "score": round(standard)},
             ]
-            
+            # 单词分析
             words = []
-            for word_node in read_node.iter('word'):
-                content = word_node.get('content', '')
-                word_score = float(word_node.get('total_score', 0))
-                dp_msg = int(word_node.get('dp_message', 0))
+            for word_node in read_node.iter("word"):
+                content = word_node.get("content", "")
+                ws = float(word_node.get("total_score", 0))
+                if ws < 10:
+                    ws *= 20
+                dp_msg = int(word_node.get("dp_message", 0))
                 status_map = {0: "ok", 16: "missed", 32: "extra", 64: "repeat", 128: "replace"}
                 status = status_map.get(dp_msg, "unknown")
-                
                 sylls = []
-                for syll_node in word_node.iter('syll'):
-                    syll_content = syll_node.get('content', '')
-                    syll_score = float(syll_node.get('syll_score', 0))
-                    serr = int(syll_node.get('serr_msg', 0)) if syll_node.get('serr_msg') else 0
-                    
+                for syll_node in word_node.iter("syll"):
+                    ss = float(syll_node.get("syll_score", 0))
+                    if ss < 10:
+                        ss *= 20
+                    serr = int(syll_node.get("serr_msg", 0)) if syll_node.get("serr_msg") else 0
                     phones = []
-                    for ph in syll_node.iter('phone'):
-                        perr = int(ph.get('perr_msg', 0)) if ph.get('perr_msg') else 0
-                        ph_dp = int(ph.get('dp_message', 0))
-                        is_yun = ph.get('is_yun', '0')
+                    for ph in syll_node.iter("phone"):
+                        ph_dp = int(ph.get("dp_message", 0))
+                        perr = int(ph.get("perr_msg", 0)) if ph.get("perr_msg") else 0
+                        is_yun = ph.get("is_yun", "0")
                         ph_type = "vowel" if is_yun == "1" else "consonant"
-                        phones.append({
-                            "content": ph.get('content', ''),
-                            "type": ph_type,
-                            "error": ph_dp != 0 or perr != 0,
-                            "tone": ph.get('mono_tone', ''),
-                        })
-                    
-                    sylls.append({
-                        "content": syll_content,
-                        "score": round(syll_score),
-                        "error": serr in (1, 2049),
-                        "phones": phones,
-                    })
-                
-                words.append({
-                    "content": content,
-                    "score": round(word_score),
-                    "status": status,
-                    "sylls": sylls,
-                })
-            
+                        phones.append({"content": ph.get("content", ""), "type": ph_type, "error": ph_dp != 0 or perr != 0, "tone": ph.get("mono_tone", "")})
+                    sylls.append({"content": syll_node.get("content", ""), "score": round(ss), "error": serr in (1, 2049), "phones": phones})
+                words.append({"content": content, "score": round(ws), "status": status, "sylls": sylls})
             result["words"] = words
-            
-            error_words = [w for w in words if w["status"] != "ok"]
-            if total >= 90:
-                result["comment"] = "非常棒！发音准确，表达流畅。"
-            elif total >= 75:
-                result["comment"] = "表现不错，可以注意个别单词的发音和连读。"
-            elif total >= 60:
-                detail = ""
-                if error_words:
-                    bad = ", ".join(w["content"] for w in error_words[:5])
-                    detail = f"重点练习: {bad}。"
-                result["comment"] = f"继续加油，建议多跟读原声材料。{detail}"
-            else:
-                result["comment"] = "需要更多练习，建议从基础发音开始。"
-        
-        elif root.find('.//read_word') is not None:
-            word_node = root.find('.//read_word')
-            total = float(word_node.get('total_score', 0))
-            result["score"] = round(total)
-            result["dimensions"] = [{"name": "总分", "score": round(total)}]
-            result["comment"] = "评测完成。"
-            
+            err_words = [w for w in words if w["status"] != "ok"]
+            if total >= 90: result["comment"] = "非常棒！发音准确，表达流畅。"
+            elif total >= 75: result["comment"] = "表现不错，可以注意个别单词的发音和连读。"
+            elif total >= 60: result["comment"] = "继续加油，建议多跟读原声材料练习。"
+            else: result["comment"] = "需要更多练习，建议从基础发音开始。"
     except Exception as e:
-        result["comment"] = f"解析结果出错: {str(e)[:100]}"
-    
+        result["comment"] = f"解析出错: {str(e)[:100]}"
     return result
 
 
 async def assess(audio_data: bytes, text: str, category: str = "read_sentence", ent: str = "en_vip"):
-    """调用讯飞ISE评测"""
-    pcm_data = _wav_to_pcm(audio_data)
-    # 文本UTF-8编码直接base64
+    """
+    调用讯飞ISE评测（SSB+TTP+AUW三步协议）
+    """
+    pcm_data = _wav_to_pcm(audio_data)  # 直接发WAV数据，ISE自己处理
+    pcm_data = pcm_data  # no truncation
     text_b64 = base64.b64encode(("\ufeff" + text).encode("utf-8")).decode()
     
-    # 分帧：每帧640字节PCM
     CHUNK_SIZE = 19000
     chunks = []
     for i in range(0, len(pcm_data), CHUNK_SIZE):
@@ -169,39 +145,39 @@ async def assess(audio_data: bytes, text: str, category: str = "read_sentence", 
     final_result = None
     
     try:
-        async with websockets.connect(url, ping_interval=10, close_timeout=10) as ws:
-            # 帧1: SSB（参数上传）- 必须带 data 字段
-            ssb_frame = {
+        async with websockets.connect(url, ping_interval=15, close_timeout=120) as ws:
+            # 帧1: SSB（参数，不含文本）
+            ssb = {
                 "common": {"app_id": "16fe0688"},
                 "business": {
                     "sub": "ise", "cmd": "ssb",
                     "ent": ent, "category": category,
                     "aue": "raw", "auf": "audio/L16;rate=16000",
-                    "rst": "utf8", "tte": "utf-8",
                 },
-                "data": {"status": 0, "data": ""},
+                "data": {"status": 0},
             }
-            await ws.send(json.dumps(ssb_frame))
+            await ws.send(json.dumps(ssb))
+            r = json.loads(await ws.recv())
+            if r.get("code") != 0:
+                raise Exception(f"SSB fail: {r.get('message','')}")
             
-            # 帧2+: AUW（音频上传）
+            ttp = {"business": {"sub": "ise", "cmd": "ttp"}, "data": {"status": 0, "data": text_b64}}
+            await ws.send(json.dumps(ttp))
+            r = json.loads(await ws.recv())
+            if r.get("code") != 0:
+                raise Exception(f"TTP fail: {r.get('message','')}")
+            
+            # 帧3+: AUW（音频分帧上传）
             for i, chunk in enumerate(chunks):
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(len(chunk)*3/4/32000)
                 if i == 0:
-                    auw_frame = {
-                        "business": {"sub": "ise", "cmd": "auw", "aus": 1},
-                        "data": {"status": 0, "data": chunk},
-                    }
-                elif i == len(chunks) - 1:
-                    auw_frame = {
-                        "business": {"sub": "ise", "cmd": "auw", "aus": 4},
-                        "data": {"status": 2, "data": chunk},
-                    }
+                    auw = {"business": {"sub": "ise", "cmd": "auw", "aus": 1}, "data": {"status": 0, "data": chunk}}
                 else:
-                    auw_frame = {
-                        "business": {"sub": "ise", "cmd": "auw", "aus": 2},
-                        "data": {"status": 1, "data": chunk},
-                    }
-                await ws.send(json.dumps(auw_frame))
+                    auw = {"business": {"sub": "ise", "cmd": "auw", "aus": 2}, "data": {"status": 1, "data": chunk}}
+                await ws.send(json.dumps(auw))
+            # 始终发送结束帧
+            end = {"business": {"sub": "ise", "cmd": "auw", "aus": 4}, "data": {"status": 2, "data": ""}}
+            await ws.send(json.dumps(end))
             
             # 接收结果
             async for msg in ws:
@@ -209,15 +185,11 @@ async def assess(audio_data: bytes, text: str, category: str = "read_sentence", 
                 code = data.get("code", -1)
                 if code != 0:
                     raise Exception(f"ISE err code={code} msg={data.get('message','')}")
-                
                 raw = data.get("data", {}).get("data", "")
                 if raw:
-                    try:
-                        xml_str = base64.b64decode(raw).decode("utf-8")
-                        final_result = _parse_xml_result(xml_str)
-                    except Exception as e:
-                        raise Exception(f"parse fail: {str(e)[:100]}")
-                
+                    xml_str = base64.b64decode(raw).decode("utf-8")
+                    print("ISE_XML: " + xml_str, flush=True)
+                    final_result = _parse_xml_result(xml_str)
                 if data.get("data", {}).get("status", 0) == 2:
                     break
                     
@@ -229,5 +201,5 @@ async def assess(audio_data: bytes, text: str, category: str = "read_sentence", 
         raise Exception(f"ISE error: {str(e)[:200]}")
     
     if final_result is None:
-        raise Exception("no result")
+        raise Exception("no result from ISE")
     return final_result

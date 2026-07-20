@@ -1,8 +1,8 @@
 """
 语音测评路由：生成评测文本 + 调用讯飞ISE评测
 """
-from fastapi import APIRouter, UploadFile, File, Form
-from app.utils.auth import current_user
+from fastapi import APIRouter, Request
+from pydantic import BaseModel
 from app.utils.xf_ise import assess as xf_assess
 from app.utils.llm_client import chat as llm_chat
 import random
@@ -45,13 +45,20 @@ async def get_text(user: dict = None):
 
 
 @router.post("/assess")
-async def assess(
-    audio: UploadFile = File(...),
-    text: str = Form(default=""),
-    user: dict = None,
-):
-    """提交录音进行评测"""
-    audio_data = await audio.read()
+async def assess_raw(request: Request):
+    """提交录音进行评测 - 接受任意JSON"""
+    import base64 as _b64, json
+    try:
+        body = await request.json()
+    except:
+        return {"score": 0, "comment": f"JSON解析失败", "dimensions": []}
+    audio_b64 = body.get("audio", "") or body.get("audio_data", "") or ""
+    text = body.get("text", "") or body.get("refText", "") or ""
+    print(f"REQ: text={repr(text[:100])} audio_len={len(audio_b64) if audio_b64 else 0}", flush=True)
+    if not audio_b64:
+        return {"score": 0, "comment": f"缺少音频数据, keys: {list(body.keys())}", "dimensions": []}
+    audio_data = _b64.b64decode(audio_b64)
+    
     if len(audio_data) < 1024:
         return {"score": 0, "comment": "录音文件过小，请重新录制", "dimensions": []}
     
@@ -60,6 +67,7 @@ async def assess(
     
     try:
         result = await xf_assess(audio_data, text.strip(), category="read_sentence", ent="en_vip")
+        print(f"ISE_RESULT: {json.dumps(result, ensure_ascii=False)[:5000]}", flush=True)
         return result
     except Exception as e:
         # 讯飞调用失败时返回兜底结果
