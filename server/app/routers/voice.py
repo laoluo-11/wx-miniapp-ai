@@ -1,7 +1,7 @@
 """
 语音测评路由：生成评测文本 + 调用讯飞ISE评测
 """
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form
 from app.utils.auth import current_user
 from app.utils.xf_ise import assess as xf_assess
 from app.utils.llm_client import chat as llm_chat
@@ -24,7 +24,9 @@ FALLBACK_SENTENCES = [
 ]
 
 @router.get("/text")
-async def get_text(user: dict = Depends(current_user)):
+
+
+async def get_text(user: dict = None):
     """生成一条英语评测文本（随机长度1-2句）"""
     # 尝试用LLM生成
     try:
@@ -46,7 +48,7 @@ async def get_text(user: dict = Depends(current_user)):
 async def assess(
     audio: UploadFile = File(...),
     text: str = Form(default=""),
-    user: dict = Depends(current_user),
+    user: dict = None,
 ):
     """提交录音进行评测"""
     audio_data = await audio.read()
