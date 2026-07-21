@@ -9,6 +9,14 @@ from app.utils.auth import current_user
 from app.models import voice_assessment as va_db
 import random
 
+async def _save_assessment(text, score, accuracy, fluency, integrity, standard, user):
+    """后台保存评测记录"""
+    if not user:
+        return
+    va_db.save(user["id"], text, score, accuracy, fluency, integrity, standard)
+
+
+
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice"])
 
 # 备用英文短句库，LLM不可用时使用
@@ -54,7 +62,7 @@ async def get_text(user: dict = None):
 
 
 @router.post("/assess")
-async def assess_raw(request: Request):
+async def assess_raw(request: Request, user: dict = Depends(current_user)):
     """提交录音进行评测 - 接受任意JSON"""
     import base64 as _b64, json
     try:
@@ -77,6 +85,21 @@ async def assess_raw(request: Request):
     try:
         result = await xf_assess(audio_data, text.strip(), category="read_sentence", ent="en_vip")
         print(f"ISE_RESULT: {json.dumps(result, ensure_ascii=False)[:5000]}", flush=True)
+        # 保存评测记录（异步，不阻塞返回）
+        try:
+            import asyncio
+            dims = result.get("dimensions", [])
+            asyncio.create_task(_save_assessment(
+                text=text.strip(),
+                score=result.get("score", 0),
+                accuracy=dims[0].get("score",0) if len(dims)>0 else 0,
+                fluency=dims[1].get("score",0) if len(dims)>1 else 0,
+                integrity=dims[2].get("score",0) if len(dims)>2 else 0,
+                standard=dims[3].get("score",0) if len(dims)>3 else 0,
+                user=user
+            ))
+        except Exception:
+            pass
         return result
     except Exception as e:
         # 讯飞调用失败时返回兜底结果
