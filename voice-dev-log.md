@@ -387,6 +387,34 @@ xml = asyncio.run(ise_assess(
                                   SSL: Cloudflare 边缘终止
 ```
 
+
+### OpenClaw 智能体网关集成
+- **背景**：原直接调用 DeepSeek API，无法利用本地 OpenClaw 网关的智能体能力
+- **架构**：`_call_llm()` 统一调用入口
+  - 优先：OpenClaw Gateway（`http://127.0.0.1:12178/v1`）
+  - 备用：直连 DeepSeek API（`https://api.deepseek.com/v1`）
+  - 切换逻辑：检测 `OPENCLAW_TOKEN` 环境变量，有则走网关，无或失败则 fallback DeepSeek
+- **配置**（`.env`）：
+  - `OPENCLAW_URL` — 网关地址，默认 `http://127.0.0.1:12178/v1`
+  - `OPENCLAW_TOKEN` — 网关认证 token
+  - `OPENCLAW_MODEL` — 模型名，默认 `openclaw`
+
+### 记忆管理系统
+- **新增文件**：`server/app/utils/memory_manager.py`
+- **功能**：
+  - 用户记忆存储（`user_memories` 表）：content、importance、key
+  - `build_context(uid)` — 构建对话上下文，注入 system prompt
+    - 优先级：档案摘要 > 高重要度事实 > 近期事实
+    - 预算控制：摘要 300 字 + 事实 500 字 = 总 800 字
+  - `maybe_compress(uid)` — 活跃记忆超 12 条时，调用 LLM 压缩为摘要
+  - 自动增减重要性分数
+- **集成**：`chat()` 和 `gen_title()` 接收 `uid` 参数，调用时自动注入记忆上下文
+
+### 提交记录
+- 后端 GitHub: `11f53eb` — 服务器适配 + 文件AI解析 + 记忆管理 (8 files)
+- 前端 微信 git: `1c7fae9` — 逐词着色 + 文件显示 + 配置更新
+- 后端 GitHub: `ab2acaa` — 开发日志更新
+
 ### 提交记录
 - 后端 GitHub: `11f53eb` — 服务器适配 + 文件AI解析 + 记忆管理 (8 files)
 - 前端 微信 git: `1c7fae9` — 逐词着色 + 文件显示 + 配置更新
