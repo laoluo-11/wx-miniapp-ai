@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.utils.auth import current_user
-from app.utils.llm_client import chat as llm_chat, gen_title
+from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
 from app.utils.memory_manager import build_context, get_all as get_memories, add as add_memory, delete as delete_memory, maybe_compress
 from app.models import conversation as conv_db
 from app.models import message as msg_db
-import os, uuid, shutil
+import os, uuid, shutil, json as json_mod, asyncio
 
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads"))
@@ -72,12 +73,11 @@ def _resolve_file_message(msg: str) -> str:
     return f"[用户上传了文件: {filename} ({size} bytes, 类型: {ext})]{NL}二进制文件，无法读取内容。请告知用户。"
 
 
-@router.post("/send", response_model=SendResp)
+@router.post("/send")
 async def send(req: SendReq, user: dict = Depends(current_user)):
     uid = user["id"]
     cid = req.conversation_id
     is_new = cid is None
-    title = None
 
     if is_new:
         cid = conv_db.create(uid)
@@ -96,29 +96,47 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
         content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
         messages.append({"role": h["role"], "content": content})
 
-    try:
-        reply = await llm_chat(messages, uid=uid)
-    except Exception as e:
-        raise HTTPException(500, f"AI服务异常: {str(e)}")
+    title = None
 
-    msg_db.save(cid, "assistant", reply)
-    conv_db.touch(cid)
-
-    # 异步提取用户记忆（不阻塞回复）
-    try:
-        import asyncio
-        asyncio.create_task(_extract_user_memories(uid, messages, reply))
-    except Exception:
-        pass  # 记忆提取失败不影响主流程
-
-    if is_new:
+    async def generate():
+        nonlocal title
+        full_reply = ""
         try:
-            title = await gen_title(processed if is_new else req.message)
-            conv_db.update_title(cid, title)
-        except Exception:
-            title = req.message[:20]
+            async for chunk in chat_stream(messages, uid=uid):
+                full_reply += chunk
+                yield chunk
+        except Exception as e:
+            err = f"\n[AI服务异常: {str(e)}]"
+            yield err
+            return
 
-    return SendResp(conversation_id=cid, reply=reply, title=title)
+        # 保存完整回复
+        msg_db.save(cid, "assistant", full_reply)
+        conv_db.touch(cid)
+
+        # 后台提取记忆
+        try:
+            asyncio.create_task(_extract_user_memories(uid, messages, full_reply))
+        except Exception:
+            pass
+
+        # 生成标题
+        if is_new:
+            try:
+                title = await gen_title(processed, uid=uid)
+                conv_db.update_title(cid, title)
+            except Exception:
+                title = req.message[:20]
+
+        # 末尾带 JSON 元数据（前端可解析 conversation_id）
+        meta = json_mod.dumps({
+            "conversation_id": cid,
+            "reply": full_reply,
+            "title": title
+        }, ensure_ascii=False)
+        yield f"\n__META__{meta}"
+
+    return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
 
 
 @router.get("/conversations")
@@ -152,6 +170,21 @@ async def delete_conversation(cid: int, user: dict = Depends(current_user)):
     if not ok:
         raise HTTPException(404, "对话不存在")
     return {"msg": "ok"}
+
+
+class BatchDeleteReq(BaseModel):
+    ids: list
+
+@router.delete("/conversations/{cid}/messages")
+async def delete_messages(cid: int, req: BatchDeleteReq, user: dict = Depends(current_user)):
+    """批量删除消息"""
+    conv = conv_db.get_by_id(cid, user["id"])
+    if not conv:
+        raise HTTPException(404, "对话不存在")
+    count = msg_db.delete_by_ids(cid, req.ids)
+    conv_db.touch(cid)
+    return {"deleted": count}
+
 
 
 @router.post("/upload")
