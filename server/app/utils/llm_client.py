@@ -43,6 +43,89 @@ async def _call_llm(messages: list, model: str, system: str,
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
+async def _call_llm_stream(messages: list, model: str, system: str,
+                           temperature: float, max_tokens: int, timeout: float):
+    """Streaming LLM call: yields text chunks as they arrive."""
+    import json as _json
+    full = [{"role": "system", "content": system}] + messages
+    payload = {
+        "model": model, "messages": full,
+        "temperature": temperature, "max_tokens": max_tokens,
+        "stream": True
+    }
+
+    # 优先 OpenClaw Gateway
+    if OPENCLAW_TOKEN:
+        headers = {
+            "Authorization": f"Bearer {OPENCLAW_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST",
+                    f"{OPENCLAW_URL}/chat/completions",
+                    headers=headers, json=payload) as r:
+                if r.status_code == 200:
+                    async for line in r.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data.strip() == "[DONE]":
+                                return
+                            try:
+                                chunk = _json.loads(data)
+                                delta = chunk["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                            except Exception:
+                                pass
+                    return
+                print(f"[LLM] OpenClaw stream failed ({r.status_code}), falling back to DeepSeek")
+
+    # Fallback: 直连 DeepSeek
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    use_model = model if model not in (OPENCLAW_MODEL, "openclaw") else LLM_MODEL
+    payload["model"] = use_model
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST",
+                f"{LLM_API_BASE}/chat/completions",
+                headers=headers, json=payload) as r:
+            r.raise_for_status()
+            async for line in r.aiter_lines():
+                if line.startswith("data: "):
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
+                        return
+                    try:
+                        chunk = _json.loads(data)
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except Exception:
+                        pass
+
+
+async def chat_stream(messages: list, uid: int = None, model: str = None):
+    """流式聊天：逐步 yield 文本块，边生成边推送"""
+    system = SYSTEM_PROMPT
+    if uid:
+        from app.utils.memory_manager import build_context
+        ctx = build_context(uid)
+        if ctx:
+            system = system + ctx
+
+    async for chunk in _call_llm_stream(
+        messages,
+        model=model or (OPENCLAW_MODEL if OPENCLAW_TOKEN else LLM_MODEL),
+        system=system,
+        temperature=0.7, max_tokens=2048, timeout=120
+    ):
+        yield chunk
+
+
 
 async def chat(messages: list, uid: int = None, model: str = None) -> str:
     """发送聊天请求。uid 为空则无记忆注入。"""

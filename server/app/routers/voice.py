@@ -1,10 +1,12 @@
 """
 语音测评路由：生成评测文本 + 调用讯飞ISE评测
 """
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from pydantic import BaseModel
 from app.utils.xf_ise import assess as xf_assess
 from app.utils.llm_client import chat as llm_chat
+from app.utils.auth import current_user
+from app.models import voice_assessment as va_db
 import random
 
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice"])
@@ -22,6 +24,13 @@ FALLBACK_SENTENCES = [
     "She has been working very hard to achieve her goals.",
     "The sunset over the ocean was absolutely breathtaking.",
 ]
+@router.get("/history")
+async def get_history(user: dict = Depends(current_user)):
+    """获取当前用户的评测历史"""
+    return va_db.get_by_user(user["id"])
+
+
+
 
 @router.get("/text")
 

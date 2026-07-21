@@ -66,3 +66,19 @@ CREATE TABLE IF NOT EXISTS user_memories (
     INDEX idx_user (user_id),
     FOREIGN KEY (user_id) REFERENCES wx_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+CREATE TABLE IF NOT EXISTS voice_assessments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    text VARCHAR(500),
+    score INT DEFAULT 0,
+    accuracy INT DEFAULT 0,
+    fluency INT DEFAULT 0,
+    integrity INT DEFAULT 0,
+    standard INT DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    FOREIGN KEY (user_id) REFERENCES wx_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

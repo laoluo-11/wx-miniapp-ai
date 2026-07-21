@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
 from app.utils.memory_manager import build_context, get_all as get_memories, add as add_memory, delete as delete_memory, maybe_compress
-from app.models import conversation as conv_db
+from app.models import conversation as conv_db, stats as stats_db
 from app.models import message as msg_db
 import os, uuid, shutil, json as json_mod, asyncio
 
@@ -196,6 +196,13 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(current
         shutil.copyfileobj(file.file, f)
     url = f"https://luois-james.xyz/static/{name}"
     return {"url": url}
+
+
+@router.get("/stats")
+async def get_stats(user: dict = Depends(current_user)):
+    """获取用户统计信息"""
+    return stats_db.user_stats(user["id"])
+
 
 
 # === 用户记忆管理 ===
