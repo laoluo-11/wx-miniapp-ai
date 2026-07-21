@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, gen_title
+from app.utils.memory_manager import build_context, get_all as get_memories, add as add_memory, delete as delete_memory, maybe_compress
 from app.models import conversation as conv_db
 from app.models import message as msg_db
 import os, uuid, shutil
 
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
-UPLOAD_DIR = "/home/dfzz/wx-miniapp-ai/uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 FILE_URL_PREFIX = "https://luois-james.xyz/static/"
@@ -96,12 +97,19 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
         messages.append({"role": h["role"], "content": content})
 
     try:
-        reply = await llm_chat(messages)
+        reply = await llm_chat(messages, uid=uid)
     except Exception as e:
         raise HTTPException(500, f"AI服务异常: {str(e)}")
 
     msg_db.save(cid, "assistant", reply)
     conv_db.touch(cid)
+
+    # 异步提取用户记忆（不阻塞回复）
+    try:
+        import asyncio
+        asyncio.create_task(_extract_user_memories(uid, messages, reply))
+    except Exception:
+        pass  # 记忆提取失败不影响主流程
 
     if is_new:
         try:
@@ -156,3 +164,73 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(current
     url = f"https://luois-james.xyz/static/{name}"
     return {"url": url}
 
+
+# === 用户记忆管理 ===
+
+async def _extract_user_memories(uid: int, messages: list, reply: str):
+    """后台提取用户记忆"""
+    # 合并对话内容进行分析
+    combined = messages[-4:] + [{"role": "assistant", "content": reply}]
+    recent = "\n".join(
+        f"{m['role']}: {str(m['content'])[:300]}" for m in combined
+    )
+    prompt = f"""从以下对话中提取关于用户的重要新信息（偏好、个人信息、需求等）。
+只提取明确陈述的事实，不要推测。每个事实一行。没有新信息时回复"无"。
+
+对话:
+{recent}"""
+
+    try:
+        from app.utils.llm_client import _call_llm
+        result = await _call_llm(
+            [{"role": "user", "content": prompt}],
+            model=None,
+            system="你是一个事实提取器。只输出事实，每行一条。没有新信息时回复：无", 
+            temperature=0.1, max_tokens=200, timeout=25
+        )
+    except Exception:
+        return 0
+
+    lines = [l.strip("- •·1234567890. \t").strip() for l in result.split("\n")]
+    facts = [l for l in lines if l and l != "无" and 3 < len(l) < 200]
+    
+    count = 0
+    existing = get_memories(uid)
+    existing_texts = [m["content"][:30] for m in existing]
+    for fact in facts[:3]:
+        # 检查是否重复
+        if not any(fact[:20] in ex for ex in existing_texts):
+            add_memory(uid, fact)
+            count += 1
+    if count:
+        print(f"[Memory] 为用户 {uid} 提取了 {count} 条新记忆")
+    # 如果记忆太多，压缩旧的
+    try:
+        await maybe_compress(uid, _call_llm)
+    except Exception:
+        pass
+
+
+class MemoryReq(BaseModel):
+    content: str
+
+@router.get("/memories")
+async def list_memories(user: dict = Depends(current_user)):
+    """获取当前用户的所有长期记忆"""
+    return get_memories(user["id"])
+
+@router.post("/memories")
+async def create_memory(req: MemoryReq, user: dict = Depends(current_user)):
+    """手动添加一条用户记忆"""
+    mid = add_memory(user["id"], req.content)
+    return {"id": mid, "msg": "ok"}
+
+@router.delete("/memories/{mid}")
+async def remove_memory(mid: int, user: dict = Depends(current_user)):
+    """删除一条记忆"""
+    # 验证记忆属于当前用户
+    all_mem = get_memories(user["id"])
+    if not any(m["id"] == mid for m in all_mem):
+        raise HTTPException(404, "记忆不存在")
+    delete_memory(mid)
+    return {"msg": "ok"}

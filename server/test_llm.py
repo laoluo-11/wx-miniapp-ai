@@ -1,10 +1,10 @@
 import sys, asyncio, os
-sys.path.insert(0, "/home/dfzz/wx-miniapp-ai/server")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 手动加载 .env（避免依赖 pydantic-settings）
 from pathlib import Path
 env = {}
-env_file = Path("/home/dfzz/wx-miniapp-ai/server/.env")
+env_file = Path(__file__).parent / ".env"
 if env_file.exists():
     for line in env_file.read_text().splitlines():
         line = line.strip()
