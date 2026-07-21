@@ -1,8 +1,89 @@
 import httpx
 from app.config import (
     LLM_API_KEY, LLM_API_BASE, LLM_MODEL, SYSTEM_PROMPT,
-    OPENCLAW_URL, OPENCLAW_TOKEN, OPENCLAW_MODEL
+    OPENCLAW_URL, OPENCLAW_TOKEN, OPENCLAW_MODEL,
+    OPENROUTER_KEY, VISION_MODEL
 )
+import base64, re
+
+OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
+
+def _has_image(messages: list) -> bool:
+    """检测消息列表中是否包含图片"""
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    return True
+    return False
+
+
+async def _describe_images(messages: list) -> list:
+    """用视觉模型描述图片，返回纯文本消息列表"""
+    new_messages = []
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            text_parts = []
+            image_urls = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    image_urls.append(part["image_url"]["url"])
+                elif isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(part["text"])
+
+            if image_urls:
+                text_prompt = " ".join(text_parts) if text_parts else "描述这张图片的内容"
+                descriptions = []
+                for img_url in image_urls:
+                    desc = await _vision_call(img_url, text_prompt)
+                    if desc:
+                        descriptions.append(desc)
+                if descriptions:
+                    new_content = "[用户发送了图片] " + " ".join(descriptions)
+                    if text_parts:
+                        new_content += "\n用户文字: " + " ".join(text_parts)
+                    new_messages.append({**msg, "content": new_content})
+                    continue
+            new_messages.append({**msg, "content": " ".join(text_parts)})
+        else:
+            new_messages.append(msg)
+    return new_messages
+
+
+async def _vision_call(image_url: str, prompt: str) -> str:
+    """调用 OpenRouter 视觉模型描述图片"""
+    if not OPENROUTER_KEY:
+        return ""
+    payload = {
+        "model": VISION_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_url}}
+            ]
+        }],
+        "max_tokens": 200
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Content-Type": "application/json"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.post(
+                f"{OPENROUTER_BASE}/chat/completions",
+                headers=headers, json=payload
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"]
+            print(f"[Vision] OpenRouter returned {r.status_code}")
+    except Exception as e:
+        print(f"[Vision] error: {e}")
+    return ""
 
 
 async def _call_llm(messages: list, model: str, system: str,
@@ -14,7 +95,6 @@ async def _call_llm(messages: list, model: str, system: str,
         "temperature": temperature, "max_tokens": max_tokens
     }
 
-    # 优先使用 OpenClaw Gateway
     if OPENCLAW_TOKEN:
         headers = {
             "Authorization": f"Bearer {OPENCLAW_TOKEN}",
@@ -29,7 +109,6 @@ async def _call_llm(messages: list, model: str, system: str,
                 return r.json()["choices"][0]["message"]["content"]
             print(f"[LLM] OpenClaw failed ({r.status_code}), falling back to DeepSeek")
 
-    # Fallback: 直连 DeepSeek
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
@@ -43,9 +122,10 @@ async def _call_llm(messages: list, model: str, system: str,
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
+
 async def _call_llm_stream(messages: list, model: str, system: str,
                            temperature: float, max_tokens: int, timeout: float):
-    """Streaming LLM call: yields text chunks as they arrive."""
+    """流式 LLM 调用：逐 token yield"""
     import json as _json
     full = [{"role": "system", "content": system}] + messages
     payload = {
@@ -54,7 +134,6 @@ async def _call_llm_stream(messages: list, model: str, system: str,
         "stream": True
     }
 
-    # 优先 OpenClaw Gateway
     if OPENCLAW_TOKEN:
         headers = {
             "Authorization": f"Bearer {OPENCLAW_TOKEN}",
@@ -81,7 +160,6 @@ async def _call_llm_stream(messages: list, model: str, system: str,
                     return
                 print(f"[LLM] OpenClaw stream failed ({r.status_code}), falling back to DeepSeek")
 
-    # Fallback: 直连 DeepSeek
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
@@ -108,27 +186,11 @@ async def _call_llm_stream(messages: list, model: str, system: str,
                         pass
 
 
-async def chat_stream(messages: list, uid: int = None, model: str = None):
-    """流式聊天：逐步 yield 文本块，边生成边推送"""
-    system = SYSTEM_PROMPT
-    if uid:
-        from app.utils.memory_manager import build_context
-        ctx = build_context(uid)
-        if ctx:
-            system = system + ctx
-
-    async for chunk in _call_llm_stream(
-        messages,
-        model=model or (OPENCLAW_MODEL if OPENCLAW_TOKEN else LLM_MODEL),
-        system=system,
-        temperature=0.7, max_tokens=2048, timeout=120
-    ):
-        yield chunk
-
-
-
 async def chat(messages: list, uid: int = None, model: str = None) -> str:
-    """发送聊天请求。uid 为空则无记忆注入。"""
+    """发送聊天请求。自动检测图片并用视觉模型预处理。"""
+    if _has_image(messages) and OPENROUTER_KEY:
+        messages = await _describe_images(messages)
+
     system = SYSTEM_PROMPT
     if uid:
         from app.utils.memory_manager import build_context
@@ -152,3 +214,24 @@ async def gen_title(first_msg: str, uid: int = None) -> str:
         temperature=0.3, max_tokens=30, timeout=30
     )
     return result.strip()
+
+
+async def chat_stream(messages: list, uid: int = None, model: str = None):
+    """流式聊天：逐 token 推送。自动检测图片并用视觉模型预处理。"""
+    if _has_image(messages) and OPENROUTER_KEY:
+        messages = await _describe_images(messages)
+
+    system = SYSTEM_PROMPT
+    if uid:
+        from app.utils.memory_manager import build_context
+        ctx = build_context(uid)
+        if ctx:
+            system = system + ctx
+
+    async for chunk in _call_llm_stream(
+        messages,
+        model=model or (OPENCLAW_MODEL if OPENCLAW_TOKEN else LLM_MODEL),
+        system=system,
+        temperature=0.7, max_tokens=2048, timeout=120
+    ):
+        yield chunk
