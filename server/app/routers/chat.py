@@ -36,7 +36,7 @@ class RenameReq(BaseModel):
     title: str
 
 
-def _resolve_file_message(msg: str) -> str:
+async def _resolve_file_message(msg: str) -> str:
     """Detect and resolve file URLs from our own server."""
     if not msg.startswith(FILE_URL_PREFIX):
         return msg
@@ -68,7 +68,15 @@ def _resolve_file_message(msg: str) -> str:
         return f"[用户上传了文件: {filename}]{NL}文件内容:{NL}{content}{NL}{NL}请分析这个文件的内容并回答用户。"
 
     if ext in IMAGE_EXTENSIONS:
-        return f"[用户上传了图片: {filename} ({size} bytes)]{NL}我无法直接查看图片内容。请告知用户。"
+        # 用视觉模型描述图片内容
+        try:
+            from app.utils.llm_client import _vision_call
+            desc = await _vision_call(f"https://luois-james.xyz/static/{filename}", "详细描述这张图片的内容")
+            if desc:
+                return f"[用户上传了图片: {filename}]{NL}图片内容描述:{NL}{desc}{NL}{NL}请根据图片内容回答用户的问题。"
+        except Exception:
+            pass
+        return f"[用户上传了图片: {filename} ({size} bytes)]{NL}图片未能识别，请重试或手动描述。"
 
     return f"[用户上传了文件: {filename} ({size} bytes, 类型: {ext})]{NL}二进制文件，无法读取内容。请告知用户。"
 
@@ -87,7 +95,7 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
             raise HTTPException(404, "对话不存在")
 
     msg_db.save(cid, "user", req.message)
-    processed = _resolve_file_message(req.message)
+    processed = await _resolve_file_message(req.message)
 
     history = msg_db.get_recent_pairs(cid, rounds=10)
     messages = []
