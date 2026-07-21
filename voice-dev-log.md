@@ -337,3 +337,56 @@ xml = asyncio.run(ise_assess(
 - 前端录音增加倒计时/预加载缓冲，避免开头截断
 - 评测历史记录与趋势图表
 - 正式环境关闭 DEV_SKIP_LOGIN
+
+
+---
+
+## 2026-07-21 工作记录
+
+### 文件上传 AI 解析
+- **问题**：用户发文件给 AI，AI 收到的是 URL 字符串无法访问，回复"无法打开外部链接"
+- **解决**：后端 `/send` 接口新增 `_resolve_file_message()` 函数
+  - 检测 `https://luois-james.xyz/static/` 前缀的 URL
+  - 文本文件（.txt/.md/.py/.json 等 30+ 格式）：自动读取内容嵌入 LLM prompt
+  - 图片文件：告知 AI 不可查看
+  - 二进制文件：告知不可读取
+  - 超 6000 字符自动截断
+- **前端优化**：文件气泡显示原始文件名（如 `report.txt`），而非裸 URL
+
+### 逐词分析着色优化
+- **问题**：ISE 返回 dp_message 始终为 0，所有单词显示同一颜色
+- **解决**：改为按单词分数三档着色
+  - >=80 分：绿色（good）— 发音优秀
+  - 60-79 分：黄色（medium）— 一般
+  - <60 分：红色（poor）— 需加强
+- 过滤 ISE 内部标记 `sil`（静音）和 `fil`（填充）
+- 新增颜色图例说明
+
+### 服务器迁移（117.69.252.58 → 47.116.193.74）
+- **新服务器**：阿里云 ECS（Alinux 4），Python 3.11
+  - IP: `47.116.193.74`
+  - 用户: `root`
+  - 代码路径: `/opt/wx-miniapp-ai`
+  - uvicorn 端口: `8000`
+- **ICP 备案问题**：阿里云拦截未备案域名 HTTP 流量
+- **解决方案**：部署 Cloudflare Tunnel
+  - 从旧服务器复制 cloudflared 二进制和认证证书
+  - 创建 systemd 服务（开机自启）
+  - 配置 ingress: `luois-james.xyz → http://127.0.0.1:8000`
+  - DNS 改为 CNAME 指向 `626935f4-...cfargotunnel.com`
+  - SSL/TLS 模式设为 Full
+  - 关闭 Nginx（不再需要），tunnel 直连 uvicorn
+- **git 配置**：生成 SSH key，添加 GitHub 授权，仓库同步
+
+### 当前架构
+
+```
+用户 → Cloudflare CDN → Tunnel → 47.116.193.74:8000 (uvicorn)
+                                  ↑ cloudflared systemd
+                                  域名 luois-james.xyz
+                                  SSL: Cloudflare 边缘终止
+```
+
+### 提交记录
+- 后端 GitHub: `11f53eb` — 服务器适配 + 文件AI解析 + 记忆管理 (8 files)
+- 前端 微信 git: `1c7fae9` — 逐词着色 + 文件显示 + 配置更新
