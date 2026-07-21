@@ -418,3 +418,145 @@ xml = asyncio.run(ise_assess(
 ### 提交记录
 - 后端 GitHub: `11f53eb` — 服务器适配 + 文件AI解析 + 记忆管理 (8 files)
 - 前端 微信 git: `1c7fae9` — 逐词着色 + 文件显示 + 配置更新
+
+
+---
+
+## 2026-07-21 后续工作记录
+
+### 一、服务器迁移与 Cloudflare Tunnel
+
+**问题**：新服务器（阿里云 ECS 47.116.193.74）未备案，阿里云拦截 HTTP 流量返回 ICP 备案页。
+
+**解决**：
+- 从旧服务器（117.69.252.58）复制 cloudflared 二进制和 cert.pem
+- 修改 config.yml 将 ingress 指向 `http://127.0.0.1:8000`
+- 创建 systemd 服务（`/etc/systemd/system/cloudflared.service`）
+- DNS 改为 CNAME → `626935f4-...cfargotunnel.com`（橙色代理）
+- SSL/TLS 设为 Full 模式
+- 停用 Nginx，tunnel 直连 uvicorn
+
+**架构**：
+```
+用户 → Cloudflare CDN → Tunnel → 47.116.193.74:8000 (uvicorn)
+                                  ↑ cloudflared systemd 自启
+```
+
+### 二、真流式输出
+
+**问题**：后端 `/send` 用 `await llm_chat()` 等完整回复后一次性返回，前端虽支持 SSE 但实际不是流式。
+
+**解决**：
+- `llm_client.py` 新增 `_call_llm_stream()`：调用 DeepSeek/OpenClaw 时加 `stream: true`，逐 token 解析 SSE 事件并 `yield`
+- `llm_client.py` 新增 `chat_stream()`：注入记忆上下文后调用流式函数
+- `chat.py` `/send` 用 `StreamingResponse(generate())` 逐 token 推送到前端
+- 末尾附带 `__META__` JSON 元数据（conversation_id、title）
+- `chat.js` 适配：`onText` 过滤 `__META__` 显示纯文本，`.then()` 解析元数据
+
+**效果**：前端逐字实时渲染，不再等完整回复。
+
+### 三、Markdown 渲染
+
+**问题**：AI 回复的 `**加粗**`、`
+
+` 换行、列表等在前端当纯文本显示。
+
+**解决**：
+- 新建 `utils/markdown.js` — 正则转换器，支持：加粗、斜体、标题（#/##/###）、列表（-/1.）、分割线、行内代码、代码块、表格、引用块
+- `message-bubble.wxml`：AI 消息改用 `<rich-text nodes="{{mdHtml}}">`
+- `message-bubble.js`：`content` observer 自动解析，流式时 80ms 节流
+- 代码块：黑底绿字配色（`#2d2d2d` 背景）
+- 表格：完整的 `<table>/<tr>/<th>/<td>` 渲染
+
+### 四、消息操作按钮
+
+AI 气泡下方加 **📋 复制** / **↗️ 分享**，用户气泡下方加 **✏️ 编辑**。
+
+- `message-bubble.wxml`：非流式、非失败、非图片/文件时显示按钮行
+- `message-bubble.js`：`onCopy`/`onShare` 调 `wx.setClipboardData`
+- `onEdit` → `triggerEvent('edit')` → `chat.js onEditMessage` → 回填输入框
+- `chat-input.js` 新增 `editText` property observer，接收外部文字
+
+### 五、批量删除消息
+
+**问题**：长按消息弹 actionSheet 只能单条删除。
+
+**解决**：
+- **后端**：`message.py` 新增 `delete_by_ids(cid, ids)` → `DELETE FROM messages WHERE id IN (...)`
+- **后端**：`chat.py` 新增 `DELETE /conversations/{cid}/messages` 接口
+- **前端**：长按进入选择模式 → 点击气泡勾选 → 底部栏显示 `已选 N 条` → `取消` / `🗑 删除`
+- `message-bubble.wxml`：选择模式下显示圆形 checkbox
+- 删除时前端先移除 → 后端同步删除
+
+### 六、会话重命名/删除同步
+
+**问题**：重命名是乐观更新（先改 UI 再调后端），失败时 UI 不一致且静默吞错。
+
+**解决**：
+- 重命名：`PUT /conversations/{id}` 后端确认后 → 更新列表，失败 Toast 提示
+- 删除会话：DB CASCADE 自动删关联消息，`.catch` 改为 Toast 而非静默吞错
+
+### 七、个人中心增强
+
+新增四个模块：
+
+| 模块 | 后端 | 前端 |
+|------|------|------|
+| 📊 统计卡片 | `GET /api/v1/chat/stats`（对话数/消息数/评测数） | `profile.wxml` 三列数字卡片 |
+| 🎯 评测记录 | `voice_assessments` 表 + `GET /voice/history` | 可展开面板，分数/文本/四维度 |
+| 🧠 AI 记忆 | `GET/POST/DELETE /chat/memories`（已有接口） | 可展开面板，逐条显示 + ×删除 |
+| ℹ️ 关于 | - | `wx.showModal` 弹版本号 |
+
+**Bug**：stats 接口返回 500 → `stats.py` 函数名 `get_user_stats` 与 router 调用的 `user_stats` 不匹配，修复后正常。
+
+### 八、头像上传与展示
+
+**问题**：`wx.chooseAvatar` 返回临时 `wxfile://` 路径，存到 DB 后过期无法显示。
+
+**解决**：
+- `profile.js` `saveProfile()`：先 `wx.uploadFile` 上传头像到服务器 → 拿到永久 URL → 再 `PUT /user/profile` 存入 DB
+- `chat.js` `loadUserAvatar()`：从 `globalData.userInfo.avatarUrl` 读取
+- `message-bubble.wxml`：用户头像有 URL 用 `<image>`，无则默认 😀
+- CSS：`avatar-user` 加 `overflow:hidden`，`avatar-img` 圆形裁切
+
+### 九、视觉模型图片识别
+
+**问题**：用户发图片后 AI 说"无法查看"。
+
+**解决**：
+- `llm_client.py` 新增 `_has_image()` / `_describe_images()` / `_vision_call()`
+- 通过 OpenRouter 调用 `qwen/qwen3-vl-235b-a22b-instruct` 视觉模型
+- `chat()` / `chat_stream()` 自动检测 `image_url` 类型消息并预处理
+- `chat.py` `_resolve_file_message()`：检测到图片 URL → `await _vision_call(url)` 获取描述 → 嵌入 prompt
+- 配置：`.env` 中 `OPENROUTER_KEY` + `VISION_MODEL=qwen/qwen3-vl-235b-a22b-instruct`
+
+**Bug**：视觉模型 18 秒响应，前端 60 秒超时足够。但 `kill -HUP` 无法热重载 uvicorn，需 `kill -9` + 重启。
+
+### 十、图片历史记录类型检测
+
+**问题**：上传的图片在聊天记录中显示为一串 URL 文本而非图片。
+
+**解决**：`chat.js` 新增 `detectMessageType(content)` 函数，加载历史消息时自动检测：
+- `https://luois-james.xyz/static/xxx.jpg` → `type: 'image'` → 气泡显示图片
+- `https://luois-james.xyz/static/xxx.pdf` → `type: 'file'` → 气泡显示文件卡片
+- 其他 → 纯文本
+
+### 十一、清理聊天双重确认
+
+**问题**：清除所有聊天记录只需点一次确认，容易误操作。
+
+**解决**：两步确认：
+1. 弹窗 "⚠️ 此操作不可恢复" → 点"继续"
+2. 弹窗输入框 → 输入"确认删除"四个字 → 不匹配则取消
+
+### 当前技术栈全景
+
+```
+前端：微信原生小程序（wx.request/uploadFile/rich-text）
+后端：FastAPI + uvicorn + MariaDB
+AI：OpenClaw Gateway → DeepSeek（流式）
+视觉：OpenRouter → qwen3-vl
+语音：讯飞 ISE WebSocket API
+传输：Cloudflare Tunnel（绕过 ICP 备案）
+代码：GitHub byOpenClaw 分支 + 微信 git Test 分支
+```
