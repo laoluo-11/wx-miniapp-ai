@@ -4,6 +4,7 @@
 from fastapi import APIRouter, Request, Depends
 from pydantic import BaseModel
 from app.utils.xf_ise import assess as xf_assess
+from app.utils.qwen_omni import chat_with_audio, chat_text_only
 from app.utils.llm_client import chat as llm_chat
 from app.utils.auth import current_user
 from app.models import voice_assessment as va_db
@@ -32,6 +33,43 @@ FALLBACK_SENTENCES = [
     "She has been working very hard to achieve her goals.",
     "The sunset over the ocean was absolutely breathtaking.",
 ]
+
+# === 口语对练 ===
+
+class ChatReq(BaseModel):
+    audio: str | None = None   # base64 PCM 音频
+    text: str | None = None    # 可选：用户附加文本
+    history: list | None = None  # 对话历史
+
+@router.post("/chat")
+async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
+    """口语对练：发送音频或文本，获取 AI 回复"""
+    try:
+        if req.audio:
+            import base64 as _b64
+            audio_data = _b64.b64decode(req.audio)
+            result = await chat_with_audio(
+                audio_data,
+                history=req.history,
+                user_text=req.text or ""
+            )
+        elif req.text:
+            result = await chat_text_only(req.text, history=req.history)
+        else:
+            return {"text": "", "history": req.history or [], "error": "请提供音频或文本"}
+        
+        return {
+            "text": result["text"],
+            "history": result["history"]
+        }
+    except Exception as e:
+        return {
+            "text": f"抱歉，出错了: {str(e)[:100]}",
+            "history": req.history or [],
+            "error": str(e)[:200]
+        }
+
+
 @router.get("/history")
 async def get_history(user: dict = Depends(current_user)):
     """获取当前用户的评测历史"""

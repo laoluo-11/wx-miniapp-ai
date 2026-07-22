@@ -31,3 +31,7 @@ PORT = int(os.getenv("PORT", "8080"))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 XF_API_KEY = os.getenv("XF_API_KEY", "")
 XF_API_SECRET = os.getenv("XF_API_SECRET", "")
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+QWEN_API_HOST = os.getenv("QWEN_API_HOST", "")
+QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "")
+QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3-omini")
