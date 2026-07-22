@@ -153,7 +153,7 @@ async def text_to_speech(text: str, voice: str = "Cherry", speed: float = 1.0) -
     except Exception:
         pass
     
-    return {"text": reply_text.strip(), "audio_url": audio_url, "history": new_history}x, base64, json as _json
+    return {"text": reply_text.strip(), "audio_url": audio_url, "history": new_history}
 from app.config import QWEN_API_KEY, QWEN_MODEL
 
 QWEN_DASHSCOPE_URL = "https://ws-vvchkx3qqa728hg2.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
