@@ -75,7 +75,14 @@ async def chat_with_audio(audio_data: bytes, history: list = None, user_text: st
     if len(new_history) > 12:
         new_history = new_history[-12:]
     
-    return {"text": reply_text.strip(), "history": new_history}
+    # 调用 TTS 生成语音
+    audio_url = ""
+    try:
+        audio_url = await text_to_speech(reply_text.strip())
+    except Exception:
+        pass
+    
+    return {"text": reply_text.strip(), "audio_url": audio_url, "history": new_history}
 
 
 async def chat_text_only(text: str, history: list = None) -> dict:
@@ -111,4 +118,33 @@ async def chat_text_only(text: str, history: list = None) -> dict:
     if len(new_history) > 12:
         new_history = new_history[-12:]
     
-    return {"text": reply_text.strip(), "history": new_history}
+    # 调用 TTS 生成语音
+    audio_url = ""
+    try:
+        audio_url = await text_to_speech(reply_text.strip())
+    except Exception:
+        pass
+    
+    return {"text": reply_text.strip(), "audio_url": audio_url, "history": new_history}
+
+
+QWEN_TTS_URL = "https://ws-vvchkx3qqa728hg2.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+
+async def text_to_speech(text: str) -> str:
+    """文字转语音，返回音频 URL"""
+    payload = {
+        "model": "qwen3-tts-flash",
+        "input": {"text": text},
+        "parameters": {"voice": "Cherry", "format": "mp3"}
+    }
+    headers = {
+        "Authorization": f"Bearer {QWEN_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(QWEN_TTS_URL, headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
+        audio = data.get("output", {}).get("audio", {})
+        return audio.get("url", "") or audio.get("data", "")
+

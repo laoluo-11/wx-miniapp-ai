@@ -60,6 +60,7 @@ async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
         
         return {
             "text": result["text"],
+            "audio_url": result.get("audio_url", ""),
             "history": result["history"]
         }
     except Exception as e:
