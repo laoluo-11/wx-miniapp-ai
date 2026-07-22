@@ -16,7 +16,7 @@ SYSTEM_PROMPT = """You are an English speaking practice partner. Follow these ru
 6. Occasionally ask follow-up questions to keep the conversation going"""
 
 
-async def chat_with_audio(audio_data: bytes, history: list = None, user_text: str = "") -> dict:
+async def chat_with_audio(audio_data: bytes, history: list = None, user_text: str = "", voice: str = "Cherry", speed: float = 1.0) -> dict:
     """发送音频到 Qwen-Omni，返回 {'text': ..., 'history': [...]}
     
     audio_data: PCM 16kHz 16bit mono raw bytes
@@ -78,7 +78,7 @@ async def chat_with_audio(audio_data: bytes, history: list = None, user_text: st
     # 调用 TTS 生成语音
     audio_url = ""
     try:
-        audio_url = await text_to_speech(reply_text.strip())
+        audio_url = await text_to_speech(reply_text.strip(), voice=voice, speed=speed)
     except Exception:
         pass
     
@@ -121,7 +121,7 @@ async def chat_text_only(text: str, history: list = None) -> dict:
     # 调用 TTS 生成语音
     audio_url = ""
     try:
-        audio_url = await text_to_speech(reply_text.strip())
+        audio_url = await text_to_speech(reply_text.strip(), voice=voice, speed=speed)
     except Exception:
         pass
     
@@ -130,12 +130,12 @@ async def chat_text_only(text: str, history: list = None) -> dict:
 
 QWEN_TTS_URL = "https://ws-vvchkx3qqa728hg2.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
-async def text_to_speech(text: str) -> str:
+async def text_to_speech(text: str, voice: str = "Cherry", speed: float = 1.0) -> str:
     """文字转语音，返回音频 URL"""
     payload = {
         "model": "qwen3-tts-flash",
         "input": {"text": text},
-        "parameters": {"voice": "Cherry", "format": "mp3"}
+        "parameters": {"voice": voice, "format": "mp3", "speech_rate": speed}
     }
     headers = {
         "Authorization": f"Bearer {QWEN_API_KEY}",

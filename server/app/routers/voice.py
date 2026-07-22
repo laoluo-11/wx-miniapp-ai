@@ -37,9 +37,11 @@ FALLBACK_SENTENCES = [
 # === 口语对练 ===
 
 class ChatReq(BaseModel):
-    audio: str | None = None   # base64 PCM 音频
-    text: str | None = None    # 可选：用户附加文本
-    history: list | None = None  # 对话历史
+    audio: str | None = None
+    text: str | None = None
+    history: list | None = None
+    voice: str = "Cherry"      # 音色：Cherry/Kai/Eric
+    speed: float = 1.0         # 语速：0.8-1.5
 
 @router.post("/chat")
 async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
@@ -51,7 +53,9 @@ async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
             result = await chat_with_audio(
                 audio_data,
                 history=req.history,
-                user_text=req.text or ""
+                user_text=req.text or "",
+                voice=req.voice,
+                speed=req.speed
             )
         elif req.text:
             result = await chat_text_only(req.text, history=req.history)
