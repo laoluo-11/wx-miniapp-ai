@@ -1,7 +1,7 @@
 """
 语音测评路由：生成评测文本 + 调用讯飞ISE评测
 """
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, UploadFile, File, Form
 from pydantic import BaseModel
 from app.utils.xf_ise import assess as xf_assess
 from app.utils.llm_client import chat as llm_chat
@@ -62,30 +62,26 @@ async def get_text(user: dict = None):
 
 
 @router.post("/assess")
-async def assess_raw(request: Request, user: dict = Depends(current_user)):
-    """提交录音进行评测 - 接受任意JSON"""
+async def assess_raw(
+    audio: UploadFile = File(...),
+    text: str = Form(""),
+    user: dict = Depends(current_user)
+):
+    """提交录音进行评测 - multipart 上传音频文件"""
     import base64 as _b64, json
-    try:
-        body = await request.json()
-    except:
-        return {"score": 0, "comment": f"JSON解析失败", "dimensions": []}
-    audio_b64 = body.get("audio", "") or body.get("audio_data", "") or ""
-    text = body.get("text", "") or body.get("refText", "") or ""
-    print(f"REQ: text={repr(text[:100])} audio_len={len(audio_b64) if audio_b64 else 0}", flush=True)
-    if not audio_b64:
-        return {"score": 0, "comment": f"缺少音频数据, keys: {list(body.keys())}", "dimensions": []}
-    audio_data = _b64.b64decode(audio_b64)
-    
+
+    audio_data = await audio.read()
+    print(f"REQ: text={repr(text[:100])} audio_len={len(audio_data)}", flush=True)
+
     if len(audio_data) < 1024:
         return {"score": 0, "comment": "录音文件过小，请重新录制", "dimensions": []}
-    
+
     if not text or not text.strip():
         text = "The weather is beautiful today."
-    
+
     try:
         result = await xf_assess(audio_data, text.strip(), category="read_sentence", ent="en_vip")
         print(f"ISE_RESULT: {json.dumps(result, ensure_ascii=False)[:5000]}", flush=True)
-        # 保存评测记录（异步，不阻塞返回）
         try:
             import asyncio
             dims = result.get("dimensions", [])
@@ -102,7 +98,6 @@ async def assess_raw(request: Request, user: dict = Depends(current_user)):
             pass
         return result
     except Exception as e:
-        # 讯飞调用失败时返回兜底结果
         return {
             "score": 0,
             "comment": f"评测服务暂时不可用: {str(e)[:100]}",
