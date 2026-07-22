@@ -58,7 +58,7 @@ async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
                 speed=req.speed
             )
         elif req.text:
-            result = await chat_text_only(req.text, history=req.history)
+            result = await chat_text_only(req.text, history=req.history, voice=req.voice, speed=req.speed)
         else:
             return {"text": "", "history": req.history or [], "error": "请提供音频或文本"}
         
