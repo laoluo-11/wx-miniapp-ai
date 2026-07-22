@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
+from app.utils.image_gen import should_generate_image, generate_image
 from app.utils.memory_manager import build_context, get_all as get_memories, add as add_memory, delete as delete_memory, maybe_compress
 from app.models import conversation as conv_db, stats as stats_db
 from app.models import message as msg_db
@@ -118,6 +119,16 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
             yield err
             return
 
+        # 图片生成：如果用户要求生成图片，额外生成并追加
+        image_url = ""
+        if should_generate_image(req.message):
+            try:
+                # 用 LLM 回复作为精炼后的 prompt
+                img_prompt = full_reply[:200] or req.message
+                image_url = await generate_image(img_prompt) or ""
+            except Exception:
+                pass
+
         # 保存完整回复
         msg_db.save(cid, "assistant", full_reply)
         conv_db.touch(cid)
@@ -140,7 +151,8 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
         meta = json_mod.dumps({
             "conversation_id": cid,
             "reply": full_reply,
-            "title": title
+            "title": title,
+            "image_url": image_url
         }, ensure_ascii=False)
         yield f"\n__META__{meta}"
 
