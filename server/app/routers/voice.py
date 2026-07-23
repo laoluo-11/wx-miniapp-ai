@@ -1,7 +1,7 @@
 """
 语音测评路由：生成评测文本 + 调用讯飞ISE评测
 """
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Query, Request, Depends
 from pydantic import BaseModel
 from app.utils.xf_ise import assess as xf_assess
 from app.utils.qwen_omni import chat_with_audio, chat_text_only
@@ -86,20 +86,30 @@ async def get_history(user: dict = Depends(current_user)):
 @router.get("/text")
 
 
-async def get_text(user: dict = None):
-    """生成一条英语评测文本（随机长度1-2句）"""
-    # 尝试用LLM生成
+async def get_text(category: str = Query("daily"), user: dict = None):
+    """Generate English evaluation text for the given difficulty."""
+    prompts = {
+        "ielts": "Generate one or two IELTS Speaking Part 2 style English sentences. Use advanced vocabulary, complex structures, 20-50 words. Return only the sentence, no explanation.",
+        "toefl": "Generate one or two TOEFL Speaking style English sentences. Use academic vocabulary, formal tone, 20-50 words. Return only the sentence.",
+        "cet4": "Generate one or two CET-4 level English sentences. Use intermediate vocabulary, clear structure, 15-35 words. Return only the sentence.",
+        "cet6": "Generate one or two CET-6 level English sentences. Use upper-intermediate vocabulary, moderate complexity, 20-40 words. Return only the sentence.",
+        "daily": "Generate one or two daily English conversation sentences. Use common vocabulary, natural tone, 15-35 words. Return only the sentence.",
+    }
+    system_prompt = prompts.get(category, prompts["daily"])
+
     try:
         reply = await llm_chat([
-            {"role": "system", "content": "你是一个英语口语老师。请随机生成一句或两句适合朗读的英语句子，难度适中，长度15-40个单词。只返回句子本身，不要任何解释。"},
-            {"role": "user", "content": "请生成一句英语朗读练习句子"}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "Please generate an English reading practice sentence"}
         ])
         text = reply.strip().strip('"').strip("'")
         if 10 < len(text) < 300:
-            return {"text": text}
+            return {"text": text, "category": category}
     except Exception:
         pass
-    
+
+    return {"text": random.choice(FALLBACK_SENTENCES), "category": category}
+
     # 兜底
     return {"text": random.choice(FALLBACK_SENTENCES)}
 
