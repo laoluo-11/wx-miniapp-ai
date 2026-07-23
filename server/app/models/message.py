@@ -40,19 +40,29 @@ _UPLOAD_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploa
 
 
 def _cleanup_static_files(contents: list):
-    """删除 messages 内容中引用的静态文件（图片/文件等）。"""
+    """Clean up static files (images, SVG diagrams, files) referenced in messages."""
+    urls = set()
+    prefix = _STATIC_PREFIX
+    # Regex to find markdown images: ![alt](STATIC_PREFIX...)
+    import re as _re
+    md_re = _re.compile(r'!\\[.*?\\]\\(' + _re.escape(prefix) + r'[^)]+\\)')
     for c in contents:
         if not c or not isinstance(c, str):
             continue
-        if c.startswith(_STATIC_PREFIX):
-            filename = c[len(_STATIC_PREFIX):]
-            filepath = _os.path.join(_UPLOAD_DIR, filename)
-            if _os.path.exists(filepath):
-                try:
-                    _os.remove(filepath)
-                    print(f"[Cleanup] Deleted: {filepath}")
-                except Exception as e:
-                    print(f"[Cleanup] Failed to delete {filepath}: {e}")
+        if c.startswith(prefix):
+            urls.add(c)
+        for m in md_re.finditer(c):
+            urls.add(m.group(1))
+    for url in urls:
+        filename = url[len(prefix):]
+        filepath = _os.path.join(_UPLOAD_DIR, filename)
+        if _os.path.exists(filepath):
+            try:
+                _os.remove(filepath)
+                print(f"[Cleanup] Deleted: {filepath}")
+            except Exception as e:
+                print(f"[Cleanup] Failed to delete {filepath}: {e}")
+
 
 
 def delete_by_ids(cid: int, ids: list) -> int:
