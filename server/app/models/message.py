@@ -45,7 +45,7 @@ def _cleanup_static_files(contents: list):
     prefix = _STATIC_PREFIX
     # Regex to find markdown images: ![alt](STATIC_PREFIX...)
     import re as _re
-    md_re = _re.compile(r'!\\[.*?\\]\\(' + _re.escape(prefix) + r'[^)]+\\)')
+    md_re = _re.compile(r'!\[.*?\]\(' + '(' + _re.escape(prefix) + r'[^)]+' + ')' + r'\)')
     for c in contents:
         if not c or not isinstance(c, str):
             continue
