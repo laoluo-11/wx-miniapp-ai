@@ -240,6 +240,7 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
                 conv_db.update_title(cid, title)
             except Exception:
                 title = req.message[:20]
+                conv_db.update_title(cid, title)  # fallback title
 
         # Phase 4: Meta
         # SVG 示意图已嵌入 markdown 文本，只有创意图片才放入 image_url
