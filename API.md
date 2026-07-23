@@ -1,5 +1,6 @@
 # ZLWL 智能聊天 — API 文档
 
+**更新日期**: 2026-07-22
 **Base URL**: `https://luois-james.xyz`
 **API 前缀**: `/api/v1`
 
@@ -10,7 +11,7 @@
 除登录和静态文件外，所有接口需在 Header 携带 Token：
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 Token 通过 `/api/v1/auth/login` 获取。
@@ -53,7 +54,7 @@ POST /api/v1/auth/login
 响应：
 ```json
 {
-    "token": "<JWT>",
+    "token": "***",
     "user_id": 1,
     "openid": "oXXXX...",
     "is_new": true
@@ -70,7 +71,7 @@ POST /api/v1/auth/login
 ### 退出登录
 ```
 POST /api/v1/auth/logout
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 响应：
@@ -85,7 +86,7 @@ Authorization: Bearer <token>
 ### 获取用户信息
 ```
 GET /api/v1/user/info
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 响应：
@@ -103,7 +104,7 @@ Authorization: Bearer <token>
 ### 更新用户资料
 ```
 PUT /api/v1/user/profile
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -128,7 +129,7 @@ Authorization: Bearer <token>
 ### 发送消息（流式）
 ```
 POST /api/v1/chat/send
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -145,31 +146,41 @@ Authorization: Bearer <token>
 ```
 
 **流式响应**（SSE 分块传输）：
+
+流式推送过程中，正文内容逐块返回。流结束时，会追加一行 META 标记：
+
 ```
 你好！
 你好！我是
 你好！我是你的AI助手……
+__META__{"conversation_id":1,"reply":"你好！我是你的AI助手……","title":"自我介绍","image_url":""}
 ```
 
-最终 JSON 结构：
-```json
-{
-    "conversation_id": 1,
-    "reply": "你好！我是你的AI助手……",
-    "title": "自我介绍"
-}
-```
+**META 格式说明**：
 
 | 字段 | 说明 |
 |------|------|
 | conversation_id | 对话 ID |
 | reply | AI 回复全文 |
 | title | 仅新建对话返回，AI 自动生成标题 |
+| image_url | AI 生成的配图/示意图 URL（无图片时为空字符串） |
+
+`__META__` 行以 `__META__` 前缀开头，后跟一个 JSON 对象。客户端应从流中解析该行以获取对话元信息。
+
+### 图表/示意图生成
+
+系统会根据对话内容自动判断是否需要生成配图：
+
+- **SVG 图表**：当对话涉及流程、架构、数据关系等内容时，AI 自动生成 SVG 示意图
+- **创意配图**：适用于故事、诗歌等创意场景，AI 生成相应的创意图片
+- 生成的图片 URL 通过流末尾的 `__META__` 中的 `image_url` 字段返回
+
+无需额外参数，系统自动完成生成。
 
 ### 对话列表
 ```
 GET /api/v1/chat/conversations
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 响应（按更新时间倒序）：
@@ -189,7 +200,7 @@ Authorization: Bearer <token>
 ### 获取历史消息
 ```
 GET /api/v1/chat/conversations/{id}/messages?limit=20&before=1712345678000
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -208,7 +219,7 @@ Authorization: Bearer <token>
 ### 重命名对话
 ```
 PUT /api/v1/chat/conversations/{id}
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -228,7 +239,7 @@ Authorization: Bearer <token>
 ### 删除对话
 ```
 DELETE /api/v1/chat/conversations/{id}
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 响应：
@@ -239,7 +250,7 @@ Authorization: Bearer <token>
 ### 文件上传
 ```
 POST /api/v1/chat/upload
-Authorization: Bearer <token>
+Authorization: Bearer ***
 Content-Type: multipart/form-data
 ```
 
@@ -252,7 +263,16 @@ Content-Type: multipart/form-data
 {"url": "https://luois-james.xyz/static/abc123.txt"}
 ```
 
-**文件 AI 解析**：将返回的 URL 作为消息文本发送到 `/send`，后端会自动读取文本文件内容嵌入 prompt。支持 .txt .md .py .js .json .csv 等 30+ 格式。
+**文件 AI 解析**：将返回的 URL 作为消息文本发送到 `/send`，后端会自动读取文件内容并嵌入 prompt。
+
+**支持的文件类型**：
+
+| 类型 | 格式 | 说明 |
+|------|------|------|
+| 文本文件 | .txt .md .py .js .json .csv 等 30+ 格式 | 读取文本内容用于对话 |
+| 图片文件 | .jpg .jpeg .png .gif .webp .bmp | 支持视觉分析（Vision），AI 可识别图片中的文字、物体、场景等内容 |
+
+图片上传后可用于视觉问答：上传图片获取 URL，将 URL 作为消息文本发送到 `/send`，系统自动启用视觉模型进行解析。
 
 ### 访问静态文件
 ```
@@ -267,7 +287,7 @@ GET /static/{filename}
 ### 获取评测文本
 ```
 GET /api/v1/voice/text
-Authorization: Bearer <token>
+Authorization: Bearer ***
 ```
 
 响应：
@@ -280,7 +300,7 @@ Authorization: Bearer <token>
 ### 提交音频评测
 ```
 POST /api/v1/voice/assess
-Authorization: Bearer <token>
+Authorization: Bearer ***
 Content-Type: application/json
 ```
 
@@ -324,7 +344,79 @@ Content-Type: application/json
 
 ---
 
-## 5. 健康检查
+## 5. 语音对话
+
+### 语音聊天（流式）
+```
+POST /api/v1/voice/chat
+Authorization: Bearer ***
+Content-Type: application/json
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| audio | string | 是 | base64 编码的音频（WAV/PCM, 16kHz, 16bit, 单声道） |
+| conversation_id | int | 否 | 不传则新建语音对话 |
+
+请求：
+```json
+{
+    "audio": "UklGRiQAAAB...",
+    "conversation_id": null
+}
+```
+
+**流式响应**（SSE 分块传输）：
+
+后端先将音频转文字（ASR），再调用 LLM 生成回复。流中逐块返回 AI 回复文本，最后以 META 行结束：
+
+```
+你好！
+我也觉得今天天气不错……
+__META__{"conversation_id":2,"reply":"我也觉得今天天气不错……","title":"闲聊","image_url":""}
+```
+
+META 格式与文字聊天 `/send` 一致，包含 `conversation_id`、`reply`、`title`、`image_url` 字段。
+
+> 注：语音对话与文字对话共用同一套 conversation，可在文字聊天历史中查看语音对话记录。
+
+### 语音对话历史
+```
+GET /api/v1/voice/history?limit=20&before=1712345678000
+Authorization: Bearer ***
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| limit | int | 否 | 每页条数，默认 20，最大 100 |
+| before | int | 否 | 毫秒时间戳，加载更早记录 |
+
+响应：
+```json
+[
+    {
+        "id": 1,
+        "conversation_id": 2,
+        "user_text": "今天天气怎么样",
+        "ai_reply": "今天天气不错，适合出门走走。",
+        "audio_url": "https://luois-james.xyz/static/voice/xxx.wav",
+        "created_at": "2026-07-22 14:30:00"
+    }
+]
+```
+
+| 字段 | 说明 |
+|------|------|
+| id | 语音记录 ID |
+| conversation_id | 关联对话 ID |
+| user_text | ASR 识别后的用户文本 |
+| ai_reply | AI 文字回复 |
+| audio_url | 用户原始音频文件 URL |
+| created_at | 创建时间 |
+
+---
+
+## 6. 健康检查
 
 ```
 GET /health  →  {"status": "ok"}

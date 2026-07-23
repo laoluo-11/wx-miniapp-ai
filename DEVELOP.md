@@ -1,6 +1,6 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-07-21
+> 最后更新：2026-07-22
 
 ## 项目概述
 
@@ -31,6 +31,37 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
                     │                 │
                     │  MariaDB (3306) │
                     └─────────────────┘
+```
+
+### 图表生成流程
+
+```
+用户消息
+    │
+    └── LLM (chat.py)
+            │
+            ├── 识别图表意图
+            │       └── diagram_prompt.py 生成结构化提示词
+            │
+            └── 输出标记格式
+                    ├── [SVG:...] → svg_render.py → PNG
+                    └── [IMAGE:prompt] → image_gen.py → PNG
+                            │
+                            └── 图片持久化到 DB / static/
+                                    │
+                                    └── 返回图片 URL 给前端
+```
+
+### 语音聊天流程
+
+```
+小程序录音
+    │
+    └── WebSocket /api/v1/voice/chat
+            │
+            ├── 接收音频帧 → 讯飞语音识别 (ASR)
+            ├── 识别文本 → LLM 生成回复
+            └── LLM 回复 → 讯飞语音合成 (TTS) → 音频帧返回
 ```
 
 ## 服务器
@@ -67,7 +98,11 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 │   │       ├── llm_client.py   # LLM 调用（OpenClaw/DeepSeek）
 │   │       ├── memory_manager.py # 用户记忆管理
 │   │       ├── wx_api.py       # 微信 code2session
-│   │       └── xf_ise.py       # 讯飞 ISE WebSocket 客户端
+│   │       ├── xf_ise.py       # 讯飞 ISE WebSocket 客户端
+│   │       ├── svg_render.py   # SVG 服务端渲染为 PNG
+│   │       ├── image_gen.py    # 图片生成（文生图）
+│   │       ├── diagram_prompt.py # 图表 LLM 提示词
+│   │       └── qwen_omni.py    # 通义千问 Omni 多模态
 │   ├── .env                    # 环境变量（密钥）
 │   ├── requirements.txt        # Python 依赖
 │   └── logs/uvicorn.log        # 运行日志
@@ -104,6 +139,8 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 | DELETE | /conversations/{id} | 删除对话 | Bearer |
 | POST | /upload | 上传文件（multipart） | Bearer |
 | GET | /static/{filename} | 访问上传的文件 | 否 |
+| GET | /stats | 对话统计（消息数/Token） | Bearer |
+| GET | /memories | 用户记忆列表 | Bearer |
 
 **聊天请求体**：
 ```json
@@ -125,6 +162,12 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 |------|------|------|------|
 | GET | /text | 生成评测文本 | Bearer |
 | POST | /assess | 提交音频评测 | Bearer |
+
+### 语音聊天 `/api/v1/voice`
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| WS | /chat | 实时语音对话（WebSocket） | Bearer |
+| GET | /history | 语音评测历史记录 | Bearer |
 
 **评测请求体**：
 ```json
@@ -257,6 +300,7 @@ git 仓库：`https://git.weixin.qq.com/saitama/ZLWL-miniApp.git`，分支 `Test
 | chat-input | 输入框 + 发送照片/文件抽屉 |
 | message-bubble | 消息气泡（文本/图片/文件卡片） |
 | navigation-bar | 自定义导航栏 |
+| custom-tab-bar | 自定义底部导航栏 |
 
 ### 工具模块
 
@@ -338,6 +382,11 @@ SSL/TLS 模式：Full
 4. **逐词评分按分数着色**：ISE dp_message 固定为 0，改为 >=80绿/60-79黄/<60红 三档
 5. **记忆压缩**：超过 12 条活跃记忆时 LLM 自动压缩为摘要，控制在 800 字符预算内
 6. **ISE 协议不使用 ttp_skip**：该模式反复触发 48195，手动 TTP 帧可靠
+7. **LLM 驱动的图表生成**：聊天中 LLM 输出 SVG/IMAGE 标记，服务端解析后渲染为 PNG 图片返回前端
+8. **SVG 服务端渲染**：svg_render.py 使用 cairosvg 将 SVG 转 PNG，确保小程序兼容性
+9. **图片持久化到数据库**：生成的图表 PNG 存入 DB + static/ 目录，支持历史回看和缓存复用
+10. **qwen-image-max 图片生成**：image_gen.py 选用 Qwen Image Max 模型，中文渲染效果好
+11. **服务器字体安装**：部署时安装 Noto Sans CJK 等中文字体，确保 SVG 渲染中文正常
 
 ## 维护命令
 
@@ -352,7 +401,12 @@ journalctl -u cloudflared -f
 
 # 重启服务
 kill -HUP $(pgrep -f "uvicorn app.main")
+pkill -f "uvicorn app.main" && cd /opt/wx-miniapp-ai/server && nohup python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > logs/uvicorn.log 2>&1 &
 systemctl restart cloudflared
+
+# 清理 Python 缓存
+find /opt/wx-miniapp-ai -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
+find /opt/wx-miniapp-ai -type f -name "*.pyc" -delete 2>/dev/null
 
 # Git 操作
 cd /opt/wx-miniapp-ai

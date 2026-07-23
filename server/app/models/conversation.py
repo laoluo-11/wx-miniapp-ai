@@ -33,5 +33,13 @@ def touch(cid: int):
 def delete(cid: int, uid: int) -> bool:
     with get_db() as db:
         cur = db.cursor()
+        # 先获取该会话所有消息内容用于清理文件
+        cur.execute("SELECT content FROM messages WHERE conversation_id = %s", (cid,))
+        contents = [row['content'] for row in cur.fetchall()]
+        # 删除消息和会话
+        cur.execute("DELETE FROM messages WHERE conversation_id = %s", (cid,))
         cur.execute("DELETE FROM conversations WHERE id = %s AND user_id = %s", (cid, uid))
+        # 清理关联文件
+        from app.models.message import _cleanup_static_files
+        _cleanup_static_files(contents)
         return cur.rowcount > 0

@@ -186,12 +186,12 @@ async def _call_llm_stream(messages: list, model: str, system: str,
                         pass
 
 
-async def chat(messages: list, uid: int = None, model: str = None) -> str:
+async def chat(messages: list, uid: int = None, model: str = None, system: str = None) -> str:
     """发送聊天请求。自动检测图片并用视觉模型预处理。"""
     if _has_image(messages) and OPENROUTER_KEY:
         messages = await _describe_images(messages)
 
-    system = SYSTEM_PROMPT
+    system = system or SYSTEM_PROMPT
     if uid:
         from app.utils.memory_manager import build_context
         ctx = build_context(uid)
@@ -216,12 +216,12 @@ async def gen_title(first_msg: str, uid: int = None) -> str:
     return result.strip()
 
 
-async def chat_stream(messages: list, uid: int = None, model: str = None):
+async def chat_stream(messages: list, uid: int = None, model: str = None, system: str = None):
     """流式聊天：逐 token 推送。自动检测图片并用视觉模型预处理。"""
     if _has_image(messages) and OPENROUTER_KEY:
         messages = await _describe_images(messages)
 
-    system = SYSTEM_PROMPT
+    system = system or SYSTEM_PROMPT
     if uid:
         from app.utils.memory_manager import build_context
         ctx = build_context(uid)
