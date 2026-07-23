@@ -289,7 +289,7 @@ async def delete_conversation(cid: int, user: dict = Depends(current_user)):
 class BatchDeleteReq(BaseModel):
     ids: list
 
-@router.post("/conversations/{cid}/messages/delete")
+@router.post("/conversations/{cid}/messages/batch_remove")
 async def delete_messages(cid: int, req: BatchDeleteReq, user: dict = Depends(current_user)):
     conv = conv_db.get_by_id(cid, user["id"])
     if not conv:
