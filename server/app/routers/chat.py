@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
+from app.utils.deep_agent import chat_deep
 from app.utils.image_gen import generate_image
 from app.utils.svg_render import svg_save
 from app.utils.diagram_prompt import DIAGRAM_SYSTEM_PROMPT
@@ -255,6 +256,60 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
 
     return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
 
+
+@router.post("/send-deep")
+async def send_deep(req: SendReq, user: dict = Depends(current_user)):
+    uid = user["id"]
+    cid = req.conversation_id
+    is_new = cid is None
+    if is_new:
+        cid = conv_db.create(uid)
+    else:
+        conv = conv_db.get_by_id(cid, uid)
+        if not conv:
+            raise HTTPException(404, "not found")
+    msg_db.save(cid, "user", req.message)
+    processed = await _resolve_file_message(req.message)
+    history = msg_db.get_recent_pairs(cid, rounds=6)
+    messages = []
+    last_idx = len(history) - 1
+    for i, h in enumerate(history):
+        content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
+        messages.append({"role": h["role"], "content": content})
+    try:
+        full_reply = await chat_deep(messages, uid=uid, system=_build_system_prompt())
+    except Exception as e:
+        full_reply = f"[Deep error: {str(e)}]"
+    clean_text, diagrams = _parse_diagrams(full_reply)
+    image_urls = await _process_diagrams(diagrams)
+    save_text = clean_text.strip() or ""
+    for url in image_urls:
+        if "/diagram_" in url or url.endswith(".svg"):
+            save_text += "\n\n![diagram](" + url + ")"
+        else:
+            msg_db.save(cid, "assistant", url)
+    if save_text.strip():
+        msg_db.save(cid, "assistant", save_text.strip())
+    conv_db.touch(cid)
+    title = None
+    if is_new:
+        try:
+            title = await gen_title(processed, uid=uid)
+            conv_db.update_title(cid, title)
+        except Exception:
+            title = req.message[:20]
+            conv_db.update_title(cid, title)
+    try:
+        asyncio.create_task(_extract_user_memories(uid, messages, save_text.strip() or full_reply))
+    except Exception:
+        pass
+    creative_urls = [url for url in image_urls if not ("/diagram_" in url or url.endswith(".svg"))]
+    return {
+        "conversation_id": cid,
+        "reply": save_text.strip(),
+        "title": title,
+        "image_url": creative_urls[0] if creative_urls else ""
+    }
 
 # ── Conversations ──
 
