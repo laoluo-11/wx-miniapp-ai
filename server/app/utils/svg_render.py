@@ -1,7 +1,7 @@
 """
-SVG -> PNG rendering (server-side)
+SVG 文件保存（不转 PNG，towxml 直接渲染）
 """
-import os, uuid, re, cairosvg
+import os, uuid, re
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -14,13 +14,10 @@ _LATEX_CMDS = [
     ('\approx', '≈'), ('\leq', '≤'), ('\geq', '≥'), ('\parallel', '∥'), ('\perp', '⊥'),
     ('\alpha', 'α'), ('\beta', 'β'), ('\pi', 'π'), ('\theta', 'θ'), ('\mu', 'μ'),
     ('\sigma', 'σ'), ('\lambda', 'λ'), ('\gamma', 'γ'), ('\delta', 'δ'), ('\Delta', 'Δ'),
+    ('\Omega', 'Ω'), ('\omega', 'ω'),
     ('\to', '→'), ('\rightarrow', '→'), ('\leftarrow', '←'), ('\Rightarrow', '⇒'),
     ('\sqrt', '√'), ('\int', '∫'), ('\prod', '∏'),
-    ('\Omega', 'Ω'), ('\omega', 'ω'),
 ]
-
-# No forced font-family - let cairo use system fontconfig fallback
-# Fonts installed: Noto Sans CJK SC, Noto Sans Math, Noto Sans Symbols
 
 
 def _latex_to_unicode(math: str) -> str:
@@ -37,38 +34,30 @@ def _latex_to_unicode(math: str) -> str:
 
 
 def _convert_text_spans(svg: str) -> str:
-    """Convert bare LaTeX-style sub/superscripts and $...$ math in SVG text content."""
-    # 1. Convert $...$ blocks
     svg = re.sub(r'\$([^$]+)\$', lambda m: _latex_to_unicode(m.group(1)), svg)
-    # 2. Convert bare subscripts (word_number) within text elements
     svg = re.sub(r'(\w)_(\d+)', lambda m: m.group(1) + ''.join(_SUB.get(d, d) for d in m.group(2)), svg)
-    # 3. Convert bare superscripts
     svg = re.sub(r'(\w)\^(\d+)', lambda m: m.group(1) + ''.join(_SUP.get(d, d) for d in m.group(2)), svg)
-    # 4. Convert common LaTeX commands outside $...$
     for cmd, uni in [('\cdot', '·'), ('\times', '×'), ('\Omega', 'Ω')]:
         svg = svg.replace(cmd, uni)
     return svg
 
 
-def _preprocess_svg(svg: str) -> str:
-    svg = _convert_text_spans(svg)
-    # Remove LLM's <style> blocks (may have incomplete fonts) and let system defaults handle it
-    svg = re.sub(r'<style[^>]*>.*?</style>', '', svg, flags=re.DOTALL)
-    return svg
-
-
-def svg_to_png(svg_code: str) -> str | None:
+def svg_save(svg_code: str) -> str | None:
+    """保存 SVG 文件，返回静态 URL（不转 PNG）"""
     try:
-        # Debug: log raw SVG input
-        with open("/tmp/last_svg_input.svg", "w") as _f:
-            _f.write(svg_code)
-        svg_code = _preprocess_svg(svg_code)
-        with open("/tmp/last_svg_processed.svg", "w") as _f:
-            _f.write(svg_code)
-        name = f"diagram_{uuid.uuid4().hex[:12]}.png"
+        svg_code = _convert_text_spans(svg_code)
+        # 移除 LLM 可能有问题的 <style> 块
+        svg_code = re.sub(r'<style[^>]*>.*?</style>', '', svg_code, flags=re.DOTALL)
+        name = f"diagram_{uuid.uuid4().hex[:12]}.svg"
         path = os.path.join(UPLOAD_DIR, name)
-        cairosvg.svg2png(bytestring=svg_code.encode("utf-8"), write_to=path)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(svg_code)
         return f"https://luois-james.xyz/static/{name}"
     except Exception as e:
-        print(f"[SVG] render failed: {e}")
+        print(f"[SVG] save failed: {e}")
         return None
+
+
+# 保留旧函数名兼容（弃用，返回 None 让 chat.py 走新路径）
+def svg_to_png(svg_code: str) -> str | None:
+    return svg_save(svg_code)

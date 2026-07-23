@@ -44,7 +44,7 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
             │       └── diagram_prompt.py 生成结构化提示词
             │
             └── 输出标记格式
-                    ├── [SVG:...] → svg_render.py → PNG
+                    ├── [SVG:...] → svg_render.py → .svg 文件 → markdown 内嵌
                     └── [IMAGE:prompt] → image_gen.py → PNG
                             │
                             └── 图片持久化到 DB / static/
@@ -99,7 +99,7 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 │   │       ├── memory_manager.py # 用户记忆管理
 │   │       ├── wx_api.py       # 微信 code2session
 │   │       ├── xf_ise.py       # 讯飞 ISE WebSocket 客户端
-│   │       ├── svg_render.py   # SVG 服务端渲染为 PNG
+│   │       ├── svg_render.py   # SVG 纯文件保存
 │   │       ├── image_gen.py    # 图片生成（文生图）
 │   │       ├── diagram_prompt.py # 图表 LLM 提示词
 │   │       └── qwen_omni.py    # 通义千问 Omni 多模态
@@ -382,11 +382,11 @@ SSL/TLS 模式：Full
 4. **逐词评分按分数着色**：ISE dp_message 固定为 0，改为 >=80绿/60-79黄/<60红 三档
 5. **记忆压缩**：超过 12 条活跃记忆时 LLM 自动压缩为摘要，控制在 800 字符预算内
 6. **ISE 协议不使用 ttp_skip**：该模式反复触发 48195，手动 TTP 帧可靠
-7. **LLM 驱动的图表生成**：聊天中 LLM 输出 SVG/IMAGE 标记，服务端解析后渲染为 PNG 图片返回前端
-8. **SVG 服务端渲染**：svg_render.py 使用 cairosvg 将 SVG 转 PNG，确保小程序兼容性
-9. **图片持久化到数据库**：生成的图表 PNG 存入 DB + static/ 目录，支持历史回看和缓存复用
+7. **LLM 驱动的图表生成**：聊天中 LLM 输出 SVG/IMAGE 标记，服务端解析后 SVG 嵌入 markdown 由 towxml 渲染，创意图片以独立气泡返回
+8. **SVG 纯文件保存**：svg_render.py 直接保存原始 SVG 文件，通过 towxml <image> 组件内嵌渲染，零失真无服务端开销
+9. **图片持久化到数据库**：创意图片存入 DB + static/ 目录；SVG 示意图仅嵌入 markdown 文本，不重复存 DB
 10. **qwen-image-max 图片生成**：image_gen.py 选用 Qwen Image Max 模型，中文渲染效果好
-11. **服务器字体安装**：部署时安装 Noto Sans CJK 等中文字体，确保 SVG 渲染中文正常
+11. **服务器字体**：已安装 Noto Sans CJK 等中文字体（SVG 由客户端渲染，字体不再关键）
 
 ## 维护命令
 

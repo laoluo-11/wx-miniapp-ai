@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
 from app.utils.image_gen import generate_image
-from app.utils.svg_render import svg_to_png
+from app.utils.svg_render import svg_save
 from app.utils.diagram_prompt import DIAGRAM_SYSTEM_PROMPT
 from app.utils.memory_manager import build_context, get_all as get_memories, add as add_memory, delete as delete_memory, maybe_compress
 from app.models import conversation as conv_db, stats as stats_db
@@ -69,15 +69,14 @@ def _parse_diagrams(text: str) -> tuple:
 
 
 async def _process_diagrams(diagrams: list) -> list:
-    """Render SVG or generate image, return URL list."""
     urls = []
     for d in diagrams:
         try:
             if d["type"] == "svg":
-                url = svg_to_png(d["content"])
+                url = svg_save(d["content"])
                 if url:
                     urls.append(url)
-                    print(f"[Diagram] SVG rendered: {url}")
+                    print(f"[Diagram] SVG saved: {url}")
             elif d["type"] == "image":
                 url = await generate_image(d["prompt"])
                 if url:
@@ -219,15 +218,19 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
         image_urls = await _process_diagrams(diagrams)
 
         # Phase 3: Save
-        if clean_text.strip():
-            msg_db.save(cid, "assistant", clean_text.strip())
-        # Save image messages to DB so they persist across sessions/devices
+        save_text = clean_text.strip() or ""
+        # SVG diagrams embedded in markdown; creative images saved separately
         for url in image_urls:
-            msg_db.save(cid, "assistant", url)
+            if "/diagram_" in url or url.endswith(".svg"):
+                save_text += f"\n\n![diagram]({url})"
+            else:
+                msg_db.save(cid, "assistant", url)
+        if save_text.strip():
+            msg_db.save(cid, "assistant", save_text.strip())
         conv_db.touch(cid)
 
         try:
-            asyncio.create_task(_extract_user_memories(uid, messages, clean_text.strip() or full_reply))
+            asyncio.create_task(_extract_user_memories(uid, messages, save_text.strip() or full_reply))
         except Exception:
             pass
 
@@ -239,11 +242,13 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
                 title = req.message[:20]
 
         # Phase 4: Meta
+        # SVG 示意图已嵌入 markdown 文本，只有创意图片才放入 image_url
+        creative_urls = [url for url in image_urls if not ("/diagram_" in url or url.endswith(".svg"))]
         meta = json_mod.dumps({
             "conversation_id": cid,
-            "reply": clean_text.strip(),
+            "reply": save_text.strip(),
             "title": title,
-            "image_url": image_urls[0] if image_urls else ""
+            "image_url": creative_urls[0] if creative_urls else ""
         }, ensure_ascii=False)
         yield f"\n__META__{meta}"
 
