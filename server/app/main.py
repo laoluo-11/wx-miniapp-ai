@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from app.routers import auth, user, chat, voice
+from app.routers import auth, user, chat, voice, latex_proxy
 import os
 
 app = FastAPI(title="AI Chat API", version="1.0", docs_url=None, redoc_url=None)
@@ -23,6 +23,7 @@ app.include_router(auth.router)
 app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(voice.router)
+app.include_router(latex_proxy.router)
 
 @app.get("/")
 async def root(): return {"service": "AI Chat Server", "version": "1.0"}
