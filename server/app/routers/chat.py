@@ -288,6 +288,17 @@ async def delete_conversation(cid: int, user: dict = Depends(current_user)):
 class BatchDeleteReq(BaseModel):
     ids: list
 
+@router.post("/conversations/{cid}/messages/delete")
+async def delete_messages(cid: int, req: BatchDeleteReq, user: dict = Depends(current_user)):
+    conv = conv_db.get_by_id(cid, user["id"])
+    if not conv:
+        raise HTTPException(404, "对话不存在")
+    count = msg_db.delete_by_ids(cid, req.ids)
+    conv_db.touch(cid)
+    return {"deleted": count}
+
+
+# Legacy DELETE endpoint (may be blocked by Cloudflare)
 @router.delete("/conversations/{cid}/messages")
 async def delete_messages(cid: int, req: BatchDeleteReq, user: dict = Depends(current_user)):
     conv = conv_db.get_by_id(cid, user["id"])
