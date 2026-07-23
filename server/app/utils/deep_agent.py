@@ -1,47 +1,17 @@
 import httpx, json as _json, asyncio, subprocess, tempfile, os, re
 from app.config import OPENCLAW_URL, OPENCLAW_TOKEN, OPENCLAW_MODEL
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the internet for current information.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"}
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "code_exec",
-            "description": "Execute Python code to compute or analyze data.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {"type": "string", "description": "Python code to execute"}
-                },
-                "required": ["code"]
-            }
-        }
-    }
-]
+SYSTEM_TOOLS = """
+You have access to these tools. To use a tool, output exactly one JSON object per line:
+{"tool":"web_search","query":"your search query"}
+{"tool":"code_exec","code":"python code to run"}
 
-SYSTEM_EXTRA = (
-    "\n\nYou have access to tools: web_search and code_exec. "
-    "Use them proactively for factual questions or computation. "
-    "After gathering info, provide a complete answer. "
-    "For diagrams, use <<<SVG>>>...<<<END>>> or <<<IMAGE>>>...<<<END>>>."
-)
+After tool results come back, continue your answer. You may use multiple tools.
+For diagrams, use <<<SVG>>>...<<<END>>> or <<<IMAGE>>>...<<<END>>>.
+"""
 
 
 async def _web_search(query: str) -> str:
-    """Search via DuckDuckGo HTML."""
     try:
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.get(
@@ -57,20 +27,19 @@ async def _web_search(query: str) -> str:
             )
             results = []
             for s in snippets[:5]:
-                clean = re.sub(r'<[^>]+>', '', s).strip()
+                clean = re.sub(r"<[^>]+>", "", s).strip()
                 if clean:
                     results.append(clean)
-            if not results:
-                return f"No results for: {query}"
-            return "\n\n".join(f"{i+1}. {r}" for i, r in enumerate(results))
+            if results:
+                return "\n\n".join(f"{i+1}. {r}" for i, r in enumerate(results))
+            return f"No results for: {query}"
     except Exception as e:
         return f"Search error: {str(e)}"
 
 
 async def _code_exec(code: str) -> str:
-    """Execute Python in sandboxed temp dir."""
     try:
-        tmpdir = tempfile.mkdtemp(prefix="deep_")
+        tmpdir = tempfile.mkdtemp(prefix="dp_")
         proc = await asyncio.create_subprocess_exec(
             "python3", "-c", code,
             stdout=asyncio.subprocess.PIPE,
@@ -83,7 +52,7 @@ async def _code_exec(code: str) -> str:
             )
         except asyncio.TimeoutError:
             proc.kill()
-            return "Execution timed out (30s limit)"
+            return "Execution timed out (30s)"
         try:
             for f in os.listdir(tmpdir):
                 os.remove(os.path.join(tmpdir, f))
@@ -101,12 +70,11 @@ async def _code_exec(code: str) -> str:
 
 
 async def chat_deep(messages: list, uid=None, system="", max_turns=5) -> str:
-    """Agent mode: LLM with tools, loop until final answer."""
     if not OPENCLAW_TOKEN:
         from app.utils.llm_client import chat as llm_chat
         return await llm_chat(messages, uid=uid)
 
-    full = [{"role": "system", "content": system + SYSTEM_EXTRA}] + messages
+    full = [{"role": "system", "content": system + SYSTEM_TOOLS}] + messages
     headers = {
         "Authorization": f"Bearer {OPENCLAW_TOKEN}",
         "Content-Type": "application/json"
@@ -116,7 +84,6 @@ async def chat_deep(messages: list, uid=None, system="", max_turns=5) -> str:
         payload = {
             "model": OPENCLAW_MODEL,
             "messages": full,
-            "tools": TOOLS,
             "temperature": 0.7,
             "max_tokens": 4096
         }
@@ -130,33 +97,39 @@ async def chat_deep(messages: list, uid=None, system="", max_turns=5) -> str:
         if r.status_code != 200:
             raise Exception(f"OpenClaw error: {r.status_code}")
 
-        data = r.json()
-        choice = data["choices"][0]
-        msg = choice["message"]
-        finish = choice.get("finish_reason", "stop")
+        content = r.json()["choices"][0]["message"]["content"]
 
-        if finish == "tool_calls" or msg.get("tool_calls"):
-            full.append(msg)
-            for tc in msg.get("tool_calls", []):
-                fn = tc["function"]
-                name = fn["name"]
-                args = _json.loads(fn.get("arguments", "{}"))
-                print(f"[Deep] tool: {name}({args})")
+        # Parse tool calls: JSON lines with "tool" key
+        tool_re = re.compile(
+            r'^\s*\{\s*"tool"\s*:\s*"(\w+)"\s*,\s*(.+?)\}\s*$',
+            re.MULTILINE
+        )
+        tool_calls = list(tool_re.finditer(content))
 
-                if name == "web_search":
-                    result = await _web_search(args.get("query", ""))
-                elif name == "code_exec":
-                    result = await _code_exec(args.get("code", ""))
-                else:
-                    result = f"Unknown tool: {name}"
+        if not tool_calls:
+            return content
 
-                full.append({
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": result
-                })
-            continue
+        # Execute tools
+        results = []
+        for m in tool_calls:
+            tool_name = m.group(1)
+            try:
+                args = _json.loads("{" + m.group(2) + "}")
+            except:
+                continue
 
-        return msg.get("content", "")
+            print(f"[Deep] tool: {tool_name}({args})")
+            if tool_name == "web_search":
+                result = await _web_search(args.get("query", ""))
+            elif tool_name == "code_exec":
+                result = await _code_exec(args.get("code", ""))
+            else:
+                result = f"Unknown tool: {tool_name}"
+            results.append(f"[{tool_name}]\n{result}")
+
+        # Clean content and continue
+        clean = tool_re.sub("", content).strip()
+        full.append({"role": "assistant", "content": clean or "Using tools..."})
+        full.append({"role": "user", "content": "Tool results:\n" + "\n\n".join(results) + "\n\nContinue your answer."})
 
     return "(depth limit reached, please simplify)"
