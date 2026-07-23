@@ -268,7 +268,7 @@ async def get_messages(cid: int, user: dict = Depends(current_user), limit: int 
     if not conv:
         raise HTTPException(404, "对话不存在")
     messages = msg_db.get_history(cid, before=before, limit=limit)
-    return [{"role": m["role"], "content": m["content"], "time": str(m.get("created_at", ""))} for m in messages]
+    return [{"id": m["id"], "role": m["role"], "content": m["content"], "time": str(m.get("created_at", ""))} for m in messages]
 
 @router.put("/conversations/{cid}")
 async def rename_conversation(cid: int, req: RenameReq, user: dict = Depends(current_user)):
