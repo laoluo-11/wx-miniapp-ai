@@ -16,7 +16,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
 
 # User uploads
-RECEIVE_DIR = os.path.join(os.path.dirname(__file__), "..", "receive")
+RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 os.makedirs(RECEIVE_DIR, exist_ok=True)
 app.mount("/static/receive", StaticFiles(directory=RECEIVE_DIR), name="static_receive")
 

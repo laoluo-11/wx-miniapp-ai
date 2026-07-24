@@ -2,7 +2,7 @@ from app.database import get_db
 from datetime import datetime
 import os as _os
 
-RECEIVE_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "receive")
+RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 _os.makedirs(RECEIVE_DIR, exist_ok=True)
 
 FILE_URL_PREFIX = "https://luois-james.xyz/static/receive/"
