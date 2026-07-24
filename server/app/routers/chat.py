@@ -357,6 +357,11 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
 
 # ── Conversations ──
 
+@router.post("/conversations")
+async def create_conversation(user: dict = Depends(current_user)):
+    cid = conv_db.create(user["id"])
+    return {"id": cid, "title": "新的对话"}
+
 @router.get("/conversations")
 async def list_conversations(user: dict = Depends(current_user)):
     return conv_db.list_by_user(user["id"])
