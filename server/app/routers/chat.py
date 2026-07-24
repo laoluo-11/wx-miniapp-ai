@@ -91,7 +91,9 @@ async def _process_diagrams(diagrams: list) -> list:
 # ── File resolution ──
 
 async def _resolve_file_message(msg: str) -> str:
-    if not msg.startswith(FILE_URL_PREFIX):
+    RECEIVE_PREFIX_V2 = "https://luois-james.xyz/receive/"
+    STATIC_PREFIX = FILE_URL_PREFIX
+    if not (msg.startswith(STATIC_PREFIX) or msg.startswith(RECEIVE_PREFIX_V2)):
         return msg
     filename = msg[len(FILE_URL_PREFIX):]
     # receive/ files go to /opt/wx-miniapp-ai/receive/
