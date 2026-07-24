@@ -75,6 +75,52 @@ def _cleanup_static_files(contents: list):
 
 
 
+
+def _cleanup_latex_cache(contents: list):
+    latex_dir = "/opt/wx-miniapp-ai/uploads/latex"
+    if not _os.path.exists(latex_dir):
+        return
+    tex_re = re.compile(r'\$\$\$|\$')
+    for ct in contents:
+        if not ct or not isinstance(ct, str):
+            continue
+        for m in tex_re.finditer(ct):
+            formula = m.group(1) or m.group(2)
+            if not formula or len(formula) < 2:
+                continue
+            try:
+                encoded = quote(formula, safe='')
+                key = hashlib.md5(encoded.encode()).hexdigest()
+                path = _os.path.join(latex_dir, f"{key}.svg")
+                if _os.path.exists(path):
+                    _os.remove(path)
+                    print(f"[Cleanup] Deleted LaTeX: {path}")
+            except Exception:
+                pass
+
+
+def _cleanup_latex_cache(contents: list):
+    latex_dir = "/opt/wx-miniapp-ai/uploads/latex"
+    if not _os.path.exists(latex_dir):
+        return
+    tex_re = re.compile(r'\$\$(.+?)\$\$|\$(.+?)\$')
+    for ct in contents:
+        if not ct or not isinstance(ct, str):
+            continue
+        for m in tex_re.finditer(ct):
+            formula = m.group(1) or m.group(2)
+            if not formula or len(formula) < 2:
+                continue
+            try:
+                encoded = quote(formula, safe='')
+                key = hashlib.md5(encoded.encode()).hexdigest()
+                path = _os.path.join(latex_dir, f"{key}.svg")
+                if _os.path.exists(path):
+                    _os.remove(path)
+                    print(f"[Cleanup] Deleted LaTeX: {path}")
+            except Exception:
+                pass
+
 def delete_by_ids(cid: int, ids: list) -> int:
     """批量删除消息，返回删除条数。同时清理关联的静态文件。"""
     if not ids:
