@@ -21,18 +21,28 @@ async def _save_assessment(text, score, accuracy, fluency, integrity, standard, 
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice"])
 
 # 备用英文短句库，LLM不可用时使用
-FALLBACK_SENTENCES = [
-    "The weather is beautiful today, let's go for a walk in the park.",
-    "I enjoy reading books and learning new things every day.",
-    "Technology has changed the way we communicate with each other.",
-    "A healthy diet and regular exercise are important for our well-being.",
-    "Music can bring people together and lift our spirits.",
-    "The library is a quiet place where students can focus on their studies.",
-    "Traveling to different countries helps us understand other cultures.",
-    "Good morning, how are you doing today?",
-    "She has been working very hard to achieve her goals.",
-    "The sunset over the ocean was absolutely breathtaking.",
-]
+FALLBACK_SENTENCES = {
+    "ielts": [
+        "Climate change represents one of the most significant challenges facing humanity, requiring immediate and coordinated global action.",
+        "The rapid advancement of artificial intelligence has fundamentally transformed various sectors of the global economy.",
+    ],
+    "toefl": [
+        "The professor emphasized that critical thinking skills are essential for academic success in higher education.",
+        "Researchers have discovered that regular physical exercise can significantly improve cognitive function and memory retention.",
+    ],
+    "cet4": [
+        "Many students find that studying in a quiet environment helps them concentrate better on their assignments.",
+        "The Internet has made it much easier for people to access information from all around the world.",
+    ],
+    "cet6": [
+        "The government has implemented a series of measures aimed at reducing carbon emissions across major industries.",
+        "Understanding cultural differences is crucial for effective communication in international business settings.",
+    ],
+    "daily": [
+        "The weather is beautiful today, let's go for a walk in the park.",
+        "I enjoy reading books and learning new things every day.",
+    ],
+}
 
 # === 口语对练 ===
 
@@ -97,10 +107,14 @@ async def get_text(category: str = Query("daily"), user: dict = None):
     }
     system_prompt = prompts.get(category, prompts["daily"])
 
+    import random as _random
+    fallback_list = FALLBACK_SENTENCES.get(category, FALLBACK_SENTENCES["daily"])
+    fallback = _random.choice(fallback_list)
+
     try:
         reply = await llm_chat([
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "Please generate an English reading practice sentence"}
+            {"role": "user", "content": "Generate a new sentence, different from: " + fallback}
         ])
         text = reply.strip().strip('"').strip("'")
         if 10 < len(text) < 300:
@@ -108,7 +122,7 @@ async def get_text(category: str = Query("daily"), user: dict = None):
     except Exception:
         pass
 
-    return {"text": random.choice(FALLBACK_SENTENCES), "category": category}
+    return {"text": fallback, "category": category}
 
     # 兜底
     return {"text": random.choice(FALLBACK_SENTENCES)}
