@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.utils.auth import current_user
@@ -366,13 +366,25 @@ async def delete_messages(cid: int, req: BatchDeleteReq, user: dict = Depends(cu
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), user: dict = Depends(current_user)):
+async def upload_file(file: UploadFile = File(...), user: dict = Depends(current_user),
+                      conversation_id: int = Query(None)):
+    uid = user["id"]
     ext = os.path.splitext(file.filename or "file")[1] or ".dat"
     name = f"{uuid.uuid4().hex}{ext}"
-    path = os.path.join(UPLOAD_DIR, name)
-    with open(path, "wb") as f:
+    # Save to receive/ directory
+    from app.models.file import RECEIVE_DIR, save as file_save
+    receive_path = os.path.join(RECEIVE_DIR, name)
+    os.makedirs(RECEIVE_DIR, exist_ok=True)
+    with open(receive_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    return {"url": f"https://luois-james.xyz/static/{name}"}
+    # Determine type
+    img_exts = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico"}
+    file_type = "image" if ext.lower() in img_exts else "file"
+    file_size = os.path.getsize(receive_path) if os.path.exists(receive_path) else 0
+    url = f"https://luois-james.xyz/static/receive/{name}"
+    # Record in DB
+    file_save(uid, file.filename or name, url, file_size, file_type, conversation_id)
+    return {"url": url}
 
 
 @router.get("/stats")

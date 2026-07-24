@@ -42,4 +42,7 @@ def delete(cid: int, uid: int) -> bool:
         # 清理关联文件
         from app.models.message import _cleanup_static_files
         _cleanup_static_files(contents)
+        # 清理用户上传文件
+        from app.models.file import delete_by_conversation
+        delete_by_conversation(cid)
         return cur.rowcount > 0

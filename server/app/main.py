@@ -15,6 +15,11 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
 
+# User uploads
+RECEIVE_DIR = os.path.join(os.path.dirname(__file__), "..", "receive")
+os.makedirs(RECEIVE_DIR, exist_ok=True)
+app.mount("/static/receive", StaticFiles(directory=RECEIVE_DIR), name="static_receive")
+
 @app.exception_handler(StarletteHTTPException)
 async def http_error(request: Request, exc: StarletteHTTPException):
     return JSONResponse(status_code=exc.status_code, content={"message": exc.detail})
