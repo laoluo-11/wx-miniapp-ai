@@ -36,26 +36,36 @@ def get_recent_pairs(cid: int, rounds: int = 10) -> list:
 import os as _os
 
 _STATIC_PREFIX = "https://luois-james.xyz/static/"
+_RECEIVE_PREFIX = "https://luois-james.xyz/receive/"
+_RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 _UPLOAD_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads")
 
 
 def _cleanup_static_files(contents: list):
-    """Clean up static files (images, SVG diagrams, files) referenced in messages."""
-    urls = set()
-    prefix = _STATIC_PREFIX
-    # Regex to find markdown images: ![alt](STATIC_PREFIX...)
+    """Clean up static files including receive/ uploads."""
     import re as _re
-    md_re = _re.compile(r'!\[.*?\]\(' + '(' + _re.escape(prefix) + r'[^)]+' + ')' + r'\)')
-    for c in contents:
-        if not c or not isinstance(c, str):
+    prefixes = [
+        (_STATIC_PREFIX, _UPLOAD_DIR),
+        (_RECEIVE_PREFIX, _RECEIVE_DIR),
+    ]
+    all_urls = []
+    for ct in contents:
+        if not ct or not isinstance(ct, str):
             continue
-        if c.startswith(prefix):
-            urls.add(c)
-        for m in md_re.finditer(c):
-            urls.add(m.group(1))
-    for url in urls:
+        for prefix, base_dir in prefixes:
+            if ct.startswith(prefix):
+                all_urls.append((ct, prefix, base_dir))
+            escaped = _re.escape(prefix)
+            md_re = _re.compile(r'\!\[.*?\]\(' + '(' + escaped + r'[^)]+' + ')' + r'\)')
+            for m in md_re.finditer(ct):
+                all_urls.append((m.group(1), prefix, base_dir))
+    seen = set()
+    for url, prefix, base_dir in all_urls:
+        if url in seen:
+            continue
+        seen.add(url)
         filename = url[len(prefix):]
-        filepath = _os.path.join(_UPLOAD_DIR, filename)
+        filepath = _os.path.join(base_dir, filename)
         if _os.path.exists(filepath):
             try:
                 _os.remove(filepath)
