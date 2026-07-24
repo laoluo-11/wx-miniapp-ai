@@ -171,8 +171,14 @@ async def _resolve_file_message(msg: str) -> str:
     return f"[用户上传了文件: {filename} ({size} bytes, 类型: {ext})]{NL}二进制文件，无法读取内容。请告知用户。"
 
 
-def _build_system_prompt() -> str:
-    return DIAGRAM_SYSTEM_PROMPT
+def _build_system_prompt(user: dict = None) -> str:
+    prompt = DIAGRAM_SYSTEM_PROMPT
+    if user:
+        name = user.get("nickname") or user.get("nickName") or ""
+        uid = user.get("id", "")
+        if name:
+            prompt += f"\n\n[当前用户]\n用户ID: {uid}\n用户昵称: {name}\n请用这个昵称称呼用户。"
+    return prompt
 
 
 # ── Main send ──
@@ -210,7 +216,7 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
 
         # Phase 1: Stream LLM (filter diagram blocks)
         try:
-            async for chunk in chat_stream(messages, uid=uid, system=_build_system_prompt()):
+            async for chunk in chat_stream(messages, uid=uid, system=_build_system_prompt(user)):
                 full_reply += chunk
                 buf += chunk
 
@@ -321,7 +327,7 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
         content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
         messages.append({"role": h["role"], "content": content})
     try:
-        full_reply = await chat_deep(messages, uid=uid, system=_build_system_prompt())
+        full_reply = await chat_deep(messages, uid=uid, system=_build_system_prompt(user))
     except Exception as e:
         full_reply = f"[Deep error: {str(e)}]"
     clean_text, diagrams = _parse_diagrams(full_reply)
