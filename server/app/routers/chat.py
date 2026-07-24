@@ -94,7 +94,12 @@ async def _resolve_file_message(msg: str) -> str:
     if not msg.startswith(FILE_URL_PREFIX):
         return msg
     filename = msg[len(FILE_URL_PREFIX):]
-    filepath = os.path.join(UPLOAD_DIR, filename)
+    # receive/ files go to /opt/wx-miniapp-ai/receive/
+    RECEIVE_PREFIX = "receive/"
+    if filename.startswith(RECEIVE_PREFIX):
+        filepath = os.path.join("/opt/wx-miniapp-ai/receive", filename[len(RECEIVE_PREFIX):])
+    else:
+        filepath = os.path.join(UPLOAD_DIR, filename)
     NL = "\n"
     if not os.path.exists(filepath):
         return f"[用户上传了文件: {filename}，但文件未找到]{NL}请告知用户文件可能已过期。"
