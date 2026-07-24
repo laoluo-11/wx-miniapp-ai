@@ -95,4 +95,14 @@ def delete_by_ids(cid: int, ids: list) -> int:
         )
         # 清理关联的静态文件
         _cleanup_static_files(contents)
+        # 清理 user_files 表中的 receive 文件记录
+        for ct in contents:
+            if ct and isinstance(ct, str) and ct.startswith(_RECEIVE_PREFIX):
+                try:
+                    cur.execute(
+                        "DELETE FROM user_files WHERE file_url = %s",
+                        (ct,)
+                    )
+                except Exception:
+                    pass
         return cur.rowcount
