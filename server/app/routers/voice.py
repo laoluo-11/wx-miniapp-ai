@@ -99,11 +99,11 @@ async def get_history(user: dict = Depends(current_user)):
 async def get_text(category: str = Query("daily"), user: dict = None):
     """Generate English evaluation text for the given difficulty."""
     prompts = {
-        "ielts": "Generate one or two IELTS Speaking Part 2 style English sentences. Use advanced vocabulary, complex structures, 20-50 words. Return only the sentence, no explanation.",
-        "toefl": "Generate one or two TOEFL Speaking style English sentences. Use academic vocabulary, formal tone, 20-50 words. Return only the sentence.",
-        "cet4": "Generate one or two CET-4 level English sentences. Use intermediate vocabulary, clear structure, 15-35 words. Return only the sentence.",
-        "cet6": "Generate one or two CET-6 level English sentences. Use upper-intermediate vocabulary, moderate complexity, 20-40 words. Return only the sentence.",
-        "daily": "Generate one or two daily English conversation sentences. Use common vocabulary, natural tone, 15-35 words. Return only the sentence.",
+        "ielts": "Generate one English paragraph (about 50 words) for IELTS Speaking Part 2 practice. Use advanced vocabulary and complex structures. Return only the paragraph, no explanation.",
+        "toefl": "Generate one English paragraph (about 50 words) for TOEFL Speaking practice. Use academic vocabulary and formal tone. Return only the paragraph, no explanation.",
+        "cet4": "Generate one English paragraph (about 50 words) for CET-4 speaking practice. Use intermediate vocabulary and clear structure. Return only the paragraph, no explanation.",
+        "cet6": "Generate one English paragraph (about 50 words) for CET-6 speaking practice. Use upper-intermediate vocabulary and moderate complexity. Return only the paragraph, no explanation.",
+        "daily": "Generate one English paragraph (about 50 words) for daily conversation practice. Use common vocabulary and natural tone. Return only the paragraph, no explanation.",
     }
     system_prompt = prompts.get(category, prompts["daily"])
 
