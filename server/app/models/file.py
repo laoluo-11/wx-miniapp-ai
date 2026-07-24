@@ -5,7 +5,7 @@ import os as _os
 RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 _os.makedirs(RECEIVE_DIR, exist_ok=True)
 
-FILE_URL_PREFIX = "https://luois-james.xyz/static/receive/"
+FILE_URL_PREFIX = "https://luois-james.xyz/receive/"
 
 
 def save(user_id: int, filename: str, file_url: str, file_size: int = 0,

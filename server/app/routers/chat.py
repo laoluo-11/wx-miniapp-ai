@@ -96,6 +96,43 @@ async def _resolve_file_message(msg: str) -> str:
     filename = msg[len(FILE_URL_PREFIX):]
     # receive/ files go to /opt/wx-miniapp-ai/receive/
     RECEIVE_PREFIX = "receive/"
+    if msg.startswith("https://luois-james.xyz/receive/"):
+        filename = msg[len("https://luois-james.xyz/receive/"):]
+        filepath = os.path.join("/opt/wx-miniapp-ai/receive", filename)
+        # Handle this as a special case below
+        NL = "\n"
+        if not os.path.exists(filepath):
+            return f"[用户上传了文件: {filename}，但文件未找到]{NL}请告知用户文件可能已过期。"
+        size = os.path.getsize(filepath)
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in TEXT_EXTENSIONS:
+            content = None
+            for enc in ('utf-8', 'gbk', 'latin-1'):
+                try:
+                    with open(filepath, 'r', encoding=enc) as f:
+                        content = f.read()
+                    break
+                except (UnicodeDecodeError, UnicodeError):
+                    continue
+            if content is None:
+                return f"[用户上传了文件: {filename} ({size} bytes)]{NL}文件无法解码为文本。"
+            limit = 6000
+            if len(content) > limit:
+                content = content[:limit] + f"{NL}{NL}... (文件共 {len(content)} 字符，仅展示前 {limit})"
+            return f"[用户上传了文件: {filename}]{NL}文件内容:{NL}{content}{NL}{NL}请分析这个文件的内容并回答用户。"
+        if ext in IMAGE_EXTENSIONS:
+            try:
+                from app.utils.llm_client import _vision_call
+                desc = await _vision_call(f"https://luois-james.xyz/receive/{filename}", "详细描述这张图片的内容")
+                if desc:
+                    return f"[用户上传了图片: {filename}]{NL}图片内容描述:{NL}{desc}{NL}{NL}请根据图片内容回答用户的问题。"
+            except Exception:
+                pass
+            return f"[用户上传了图片: {filename} ({size} bytes)]{NL}图片未能识别，请重试或手动描述。"
+        return f"[用户上传了文件: {filename} ({size} bytes, 类型: {ext})]{NL}二进制文件，无法读取内容。请告知用户。"
+
+    # Legacy: static/receive/ prefix
+    OLD_RECEIVE = "receive/"
     if filename.startswith(RECEIVE_PREFIX):
         filepath = os.path.join("/opt/wx-miniapp-ai/receive", filename[len(RECEIVE_PREFIX):])
     else:

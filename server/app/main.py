@@ -13,12 +13,13 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 # 静态文件服务（上传文件访问）
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
-
-# User uploads
+# User uploads mounted BEFORE /static to avoid prefix conflict
 RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 os.makedirs(RECEIVE_DIR, exist_ok=True)
-app.mount("/static/receive", StaticFiles(directory=RECEIVE_DIR), name="static_receive")
+app.mount("/receive", StaticFiles(directory=RECEIVE_DIR), name="receive")
+
+app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
+
 
 @app.exception_handler(StarletteHTTPException)
 async def http_error(request: Request, exc: StarletteHTTPException):
