@@ -99,11 +99,11 @@ async def get_history(user: dict = Depends(current_user)):
 async def get_text(category: str = Query("daily"), user: dict = None):
     """Generate English evaluation text for the given difficulty."""
     prompts = {
-        "ielts": "Generate one English paragraph (about 50 words) for IELTS Speaking Part 2 practice. Use advanced vocabulary and complex structures. Return only the paragraph, no explanation.",
-        "toefl": "Generate one English paragraph (about 50 words) for TOEFL Speaking practice. Use academic vocabulary and formal tone. Return only the paragraph, no explanation.",
-        "cet4": "Generate one English paragraph (about 50 words) for CET-4 speaking practice. Use intermediate vocabulary and clear structure. Return only the paragraph, no explanation.",
-        "cet6": "Generate one English paragraph (about 50 words) for CET-6 speaking practice. Use upper-intermediate vocabulary and moderate complexity. Return only the paragraph, no explanation.",
-        "daily": "Generate one English paragraph (about 50 words) for daily conversation practice. Use common vocabulary and natural tone. Return only the paragraph, no explanation.",
+        "ielts": "Generate one English paragraph (about 50 words) for IELTS Speaking Part 2 practice. Use advanced vocabulary and complex structures. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
+        "toefl": "Generate one English paragraph (about 50 words) for TOEFL Speaking practice. Use academic vocabulary and formal tone. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
+        "cet4": "Generate one English paragraph (about 50 words) for CET-4 speaking practice. Use intermediate vocabulary and clear structure. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
+        "cet6": "Generate one English paragraph (about 50 words) for CET-6 speaking practice. Use upper-intermediate vocabulary and moderate complexity. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
+        "daily": "Generate one English paragraph (about 50 words) for daily conversation practice. Use common vocabulary and natural tone. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
     }
     system_prompt = prompts.get(category, prompts["daily"])
 
@@ -117,6 +117,9 @@ async def get_text(category: str = Query("daily"), user: dict = None):
             {"role": "user", "content": "Generate a new sentence, different from: " + fallback}
         ])
         text = reply.strip().strip('"').strip("'")
+        # Strip common preambles
+        import re as _re2
+        text = _re2.sub(r'(?i)^(here\s+is\s+)?(your\s+)?(a\s+)?(english\s+)?(practice\s+)?(speaking\s+)?(paragraph|sentence|text)[:!.]*\s*', '', text).strip()
         if 10 < len(text) < 300:
             return {"text": text, "category": category}
     except Exception:
