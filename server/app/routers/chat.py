@@ -425,7 +425,7 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(current
     img_exts = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico"}
     file_type = "image" if ext.lower() in img_exts else "file"
     file_size = os.path.getsize(receive_path) if os.path.exists(receive_path) else 0
-    url = f"https://luois-james.xyz/static/receive/{name}"
+    url = f"https://luois-james.xyz/receive/{name}"
     # Record in DB
     file_save(uid, file.filename or name, url, file_size, file_type, conversation_id)
     return {"url": url}
