@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-FILE_URL_PREFIX = "https://luois-james.xyz/static/"
+FILE_URL_PREFIX = "https://yyzhilingweilai.com/static/"
 
 TEXT_EXTENSIONS = {'.txt','.md','.py','.js','.json','.xml','.html','.css',
                    '.csv','.yaml','.yml','.toml','.ini','.cfg','.conf',
@@ -91,15 +91,15 @@ async def _process_diagrams(diagrams: list) -> list:
 # ── File resolution ──
 
 async def _resolve_file_message(msg: str) -> str:
-    RECEIVE_PREFIX_V2 = "https://luois-james.xyz/receive/"
+    RECEIVE_PREFIX_V2 = "https://yyzhilingweilai.com/receive/"
     STATIC_PREFIX = FILE_URL_PREFIX
     if not (msg.startswith(STATIC_PREFIX) or msg.startswith(RECEIVE_PREFIX_V2)):
         return msg
     filename = msg[len(FILE_URL_PREFIX):]
     # receive/ files go to /opt/wx-miniapp-ai/receive/
     RECEIVE_PREFIX = "receive/"
-    if msg.startswith("https://luois-james.xyz/receive/"):
-        filename = msg[len("https://luois-james.xyz/receive/"):]
+    if msg.startswith("https://yyzhilingweilai.com/receive/"):
+        filename = msg[len("https://yyzhilingweilai.com/receive/"):]
         filepath = os.path.join("/opt/wx-miniapp-ai/receive", filename)
         # Handle this as a special case below
         NL = "\n"
@@ -125,7 +125,7 @@ async def _resolve_file_message(msg: str) -> str:
         if ext in IMAGE_EXTENSIONS:
             try:
                 from app.utils.llm_client import _vision_call
-                desc = await _vision_call(f"https://luois-james.xyz/receive/{filename}", "详细描述这张图片的内容")
+                desc = await _vision_call(f"https://yyzhilingweilai.com/receive/{filename}", "详细描述这张图片的内容")
                 if desc:
                     return f"[用户上传了图片: {filename}]{NL}图片内容描述:{NL}{desc}{NL}{NL}请根据图片内容回答用户的问题。"
             except Exception:
@@ -162,7 +162,7 @@ async def _resolve_file_message(msg: str) -> str:
     if ext in IMAGE_EXTENSIONS:
         try:
             from app.utils.llm_client import _vision_call
-            desc = await _vision_call(f"https://luois-james.xyz/static/{filename}", "详细描述这张图片的内容")
+            desc = await _vision_call(f"https://yyzhilingweilai.com/static/{filename}", "详细描述这张图片的内容")
             if desc:
                 return f"[用户上传了图片: {filename}]{NL}图片内容描述:{NL}{desc}{NL}{NL}请根据图片内容回答用户的问题。"
         except Exception:
@@ -188,6 +188,7 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
     uid = user["id"]
     cid = req.conversation_id
     is_new = cid is None
+    existing_msgs = []
 
     if is_new:
         cid = conv_db.create(uid)
@@ -195,8 +196,12 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
         conv = conv_db.get_by_id(cid, uid)
         if not conv:
             raise HTTPException(404, "对话不存在")
+        # 会话已有 ID 但可能还没有消息：当作新会话处理
+        existing_msgs = msg_db.get_history(cid, limit=1)
 
     msg_db.save(cid, "user", req.message)
+    if not is_new and not existing_msgs:
+        is_new = True  # pre-created conversation, first message
     processed = await _resolve_file_message(req.message)
 
     history = msg_db.get_recent_pairs(cid, rounds=10)
@@ -287,10 +292,15 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
 
         if is_new:
             try:
-                title = await gen_title(processed, uid=uid)
+                print(f"[TITLE] Calling gen_title for conv {cid}, user_msg={processed[:30]}... reply_len={len(save_text.strip() or full_reply)}", flush=True)
+                title = await gen_title(processed, uid=uid, reply=save_text.strip() or full_reply)
+                print(f"[TITLE] gen_title returned: [{title}]", flush=True)
                 conv_db.update_title(cid, title)
-            except Exception:
-                title = req.message[:20]
+                print(f"[TITLE] Updated conv {cid} title to [{title}]", flush=True)
+            except Exception as e:
+                print(f"[TITLE] gen_title failed: {e}", flush=True)
+                title = (save_text.strip() or full_reply or req.message)[:20]
+                print(f"[TITLE] Using fallback title: [{title}]", flush=True)
                 conv_db.update_title(cid, title)  # fallback title
 
         # Phase 4: Meta
@@ -312,13 +322,17 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
     uid = user["id"]
     cid = req.conversation_id
     is_new = cid is None
+    existing_msgs = []
     if is_new:
         cid = conv_db.create(uid)
     else:
         conv = conv_db.get_by_id(cid, uid)
         if not conv:
             raise HTTPException(404, "not found")
+        existing_msgs = msg_db.get_history(cid, limit=1)
     msg_db.save(cid, "user", req.message)
+    if not is_new and not existing_msgs:
+        is_new = True
     processed = await _resolve_file_message(req.message)
     history = msg_db.get_recent_pairs(cid, rounds=6)
     messages = []
@@ -344,10 +358,14 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
     title = None
     if is_new:
         try:
-            title = await gen_title(processed, uid=uid)
+            print(f"[TITLE-DEEP] Calling gen_title for conv {cid}", flush=True)
+            title = await gen_title(processed, uid=uid, reply=full_reply)
+            print(f"[TITLE-DEEP] gen_title returned: [{title}]", flush=True)
             conv_db.update_title(cid, title)
-        except Exception:
-            title = req.message[:20]
+        except Exception as e:
+            print(f"[TITLE-DEEP] gen_title failed: {e}", flush=True)
+            title = full_reply[:20] if full_reply else req.message[:20]
+            print(f"[TITLE-DEEP] fallback: [{title}]", flush=True)
             conv_db.update_title(cid, title)
     try:
         asyncio.create_task(_extract_user_memories(uid, messages, save_text.strip() or full_reply))
@@ -366,7 +384,7 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
 @router.post("/conversations")
 async def create_conversation(user: dict = Depends(current_user)):
     cid = conv_db.create(user["id"])
-    return {"id": cid, "title": "新的对话"}
+    return {"id": cid, "title": conv_db.get_by_id(cid, user["id"])["title"]}
 
 @router.get("/conversations")
 async def list_conversations(user: dict = Depends(current_user)):
@@ -436,7 +454,7 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(current
     img_exts = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico"}
     file_type = "image" if ext.lower() in img_exts else "file"
     file_size = os.path.getsize(receive_path) if os.path.exists(receive_path) else 0
-    url = f"https://luois-james.xyz/receive/{name}"
+    url = f"https://yyzhilingweilai.com/receive/{name}"
     # Record in DB
     file_save(uid, file.filename or name, url, file_size, file_type, conversation_id)
     return {"url": url}

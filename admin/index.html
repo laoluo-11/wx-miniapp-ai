@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang=zh-cn>
+<head>
+<meta charset=utf-8>
+<meta name=viewport content=width=device-width,initial-scale=1>
+<title>ZLWL 管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#f5f5f5;color:#333}
+.page{max-width:1200px;margin:0 auto;padding:20px;display:none}
+.page.visible{display:block}
+.login-box{max-width:360px;margin:30vh auto;background:#fff;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.login-box h1{font-size:24px;margin-bottom:24px;color:#07c160}
+input{width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:15px;margin-bottom:16px;outline:none}
+input:focus{border-color:#07c160}
+button{padding:8px 18px;background:#07c160;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+button:hover{background:#06ad56}
+.card{background:#fff;border-radius:10px;padding:20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:#f9f9f9;padding:10px 12px;text-align:left;font-size:13px;color:#666;border-bottom:1px solid #eee}
+td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
+.hidden{display:none}
+.row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
+.stat-item{text-align:center;padding:16px;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.stat-num{font-size:28px;font-weight:700;color:#07c160}
+.stat-label{font-size:12px;color:#999;margin-top:4px}
+.tab-bar{display:flex;border-bottom:2px solid #eee;margin-bottom:16px}
+.tab{padding:10px 20px;font-size:14px;cursor:pointer;color:#666;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab:hover{color:#333}
+.tab.act{color:#07c160;border-bottom-color:#07c160;font-weight:600}
+.err{color:#e64340;font-size:14px;margin-top:12px}
+.back{color:#07c160;cursor:pointer;font-size:14px;margin-bottom:12px;display:inline-block}
+.item{padding:10px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer}
+.item:hover{background:#f9f9f9}
+.item-t{font-size:14px;font-weight:500;color:#333}
+.item-m{font-size:11px;color:#999;margin-top:3px}
+.emp{text-align:center;color:#999;padding:30px;font-size:14px}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin-right:3px}
+.tg-user{background:#e3f2fd;color:#1565c0}
+.tg-ai{background:#e8f5e9;color:#2e7d32}
+.bub-user{background:#e3f2fd;padding:8px 12px;border-radius:10px 10px 10px 4px;margin:4px 0;max-width:80%;align-self:flex-start;font-size:13px}
+.bub-ai{background:#f5f5f5;padding:8px 12px;border-radius:10px 10px 4px 10px;margin:4px 0;max-width:80%;align-self:flex-end;font-size:13px}
+.btn{padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;border:none;display:inline-block;margin:1px;background:#f2f2f2;color:#666}
+.btn-pri{background:#07c160;color:#fff}
+.btn-dgr{background:#e64340;color:#fff}
+</style>
+</head>
+<body>
+<div class="page visible" id=pgLogin>
+<div class=login-box>
+<h1>ZLWL 管理后台</h1>
+<p id=loginErr class=err></p>
+<input type=password id=pwd placeholder="密码" autofocus>
+<button id=loginBtn>登录</button>
+</div>
+</div>
+<div class=page id=pgApp>
+<div class=row><h2>ZLWL 管理后台</h2><button id=logoutBtn>退出</button></div>
+<div class=stat-grid id=statsGrid>
+<div class=stat-item><div class=stat-num>--</div><div class=stat-label>用户</div></div>
+<div class=stat-item><div class=stat-num>--</div><div class=stat-label>对话</div></div>
+<div class=stat-item><div class=stat-num>--</div><div class=stat-label>消息</div></div>
+<div class=stat-item><div class=stat-num>--</div><div class=stat-label>评测</div></div>
+<div class=stat-item><div class=stat-num>--</div><div class=stat-label>记忆</div></div>
+<div class=stat-item><div class=stat-num>--</div><div class=stat-label>文件</div></div>
+</div>
+<div class=card id=pnUsers>
+<div class=row><h3>用户管理</h3>
+<input type=text id=searchIn placeholder="搜索..." style=width:200px>
+<button id=searchBtn>搜索</button></div>
+<div id=usrTable></div></div>
+<div class="card hidden" id=pnDetail>
+<span id=backBtn class=back>← 返回</span>
+<div class=row><h3 id=detailName></h3></div>
+<div class=tab-bar id=tabBar>
+<span class="tab act" data-tab=convs>对话</span>
+<span class=tab data-tab=assess>评测</span>
+<span class=tab data-tab=mems>记忆</span>
+<span class=tab data-tab=files>文件</span>
+</div>
+<div id=tConvs></div>
+<div id=tAssess class=hidden></div>
+<div id=tMems class=hidden></div>
+<div id=tFiles class=hidden></div></div>
+<div class="card hidden" id=pnMsgs>
+<span id=backBtn2 class=back>← 返回</span>
+<div class=row><h3 id=msgTitle></h3><button id=delConvBtn class="btn btn-dgr">删除</button></div>
+<div id=msgList style="max-height:500px;overflow-y:auto;padding:12px;background:#fafafa;border-radius:8px"></div></div></div>
+<script>
+var T=null,U=null,C=null
+
+function E(id){return document.getElementById(id)}
+function show(id){E(id).classList.remove('hidden');E(id).classList.add('visible')}
+function hide(id){E(id).classList.add('hidden');E(id).classList.remove('visible')}
+
+function api(m,u,b,cb){
+  if(!T){console.warn('api: no token');return}
+  var x=new XMLHttpRequest()
+  x.open(m||'GET','/api/v1/admin'+u)
+  x.setRequestHeader('Authorization','Bearer '+T)
+  x.onload=function(){
+    if(x.status===200&&cb)cb(JSON.parse(x.responseText))
+  }
+  x.onerror=function(){console.error('api error:',m,u,x.status)}
+  if(b){x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(b))}else x.send()
+}
+
+// Login
+E('loginBtn').onclick=function(){
+  var p=E('pwd').value
+  if(!p)return
+  E('loginErr').textContent=''
+  E('loginBtn').disabled=true
+  E('loginBtn').textContent='登录中...'
+  var x=new XMLHttpRequest()
+  x.open('POST','/api/v1/admin/login')
+  x.setRequestHeader('Content-Type','application/json')
+  x.onload=function(){
+    E('loginBtn').disabled=false
+    E('loginBtn').textContent='登录'
+    if(x.status!==200){
+      try{E('loginErr').textContent=JSON.parse(x.responseText).message}catch(e){E('loginErr').textContent='登录失败'}
+      return
+    }
+    var d=JSON.parse(x.responseText)
+    if(!d.token){E('loginErr').textContent='登录失败';return}
+    T=d.token
+    E('pgLogin').classList.remove('visible')
+    E('pgApp').classList.add('visible')
+    refreshAll()
+  }
+  x.onerror=function(){E('loginBtn').disabled=false;E('loginBtn').textContent='登录';E('loginErr').textContent='网络错误'}
+  x.send(JSON.stringify({password:p}))
+}
+E('pwd').onkeydown=function(e){if(e.key==='Enter')E('loginBtn').click()}
+E('logoutBtn').onclick=function(){T=null;E('pgApp').classList.remove('visible');E('pgLogin').classList.add('visible');E('pwd').value=''}
+E('searchBtn').onclick=refreshUsers
+
+function refreshAll(){refreshStats();refreshUsers()}
+
+function refreshStats(){
+  api('GET','/stats',null,function(d){
+    var grid=E('statsGrid')
+    var ls={users:'用户',conversations:'对话',messages:'消息',assessments:'评测',memories:'记忆',files:'文件'}
+    var h=''
+    for(var k in ls)h+='<div class=stat-item><div class=stat-num>'+(d[k]||0)+'</div><div class=stat-label>'+ls[k]+'</div></div>'
+    grid.innerHTML=h
+  })
+}
+
+function refreshUsers(){
+  var q=E('searchIn').value
+  api('GET','/users?page=1&limit=50'+(q?'&search='+encodeURIComponent(q):''),null,function(d){
+    if(!d){return}
+    var h='<table><tr><th>ID</th><th>昵称</th><th>手机号</th><th>操作</th></tr>'
+    var users=d.users||[]
+    for(var i=0;i<users.length;i++){var u=users[i]
+      h+='<tr><td>'+u.id+'</td><td>'+(u.nickname||'-')+'</td><td>'+(u.phone||'-')+'</td>'
+      h+='<td><span class=btn onclick="viewU('+u.id+')">详情</span> <span class="btn btn-pri" onclick="editU('+u.id+')">编辑</span> <span class="btn btn-dgr" onclick="delU('+u.id+')">删除</span></td></tr>'}
+    h+='</table>'
+    E('usrTable').innerHTML=h||'<div class=emp>暂无用户</div>'
+  })
+}
+
+// User detail
+function viewU(uid){U=uid;hide('pnUsers');hide('pnMsgs');show('pnDetail');document.querySelectorAll('#tabBar .tab')[0].click()}
+E('backBtn').onclick=function(){hide('pnDetail');hide('pnMsgs');show('pnUsers')}
+E('backBtn2').onclick=function(){hide('pnMsgs');show('pnDetail')}
+
+// Tab switching
+E('tabBar').onclick=function(e){
+  if(!e.target.classList.contains('tab'))return
+  var t=e.target.dataset.tab
+  document.querySelectorAll('#tabBar .tab').forEach(function(el){el.classList.toggle('act',el.dataset.tab===t)})
+  ;['convs','assess','mems','files'].forEach(function(id){E('t'+id.charAt(0).toUpperCase()+id.slice(1)).classList.add('hidden')})
+  var cap=t.charAt(0).toUpperCase()+t.slice(1)
+  E('t'+cap).classList.remove('hidden')
+  if(t==='convs')loadConvs()
+  else if(t==='assess')loadAssess()
+  else if(t==='mems')loadMems()
+  else if(t==='files')loadFiles()
+}
+
+function loadConvs(){
+  E('tConvs').innerHTML='<div class=emp>加载中...</div>'
+  api('GET','/users/'+U+'/conversations',null,function(list){
+    if(!list||!list.length){E('tConvs').innerHTML='<div class=emp>暂无对话</div>';return}
+    var h=''
+    for(var i=0;i<list.length;i++){var c=list[i]
+      h+='<div class=item onclick="showMsgs('+c.id+')"><div class=item-t>'+(c.title||'未命名')+'</div><div class=item-m>'+c.msg_count+'条 | '+(c.updated_at||'').substring(0,16)+'</div></div>'}
+    E('tConvs').innerHTML=h
+  })
+}
+
+function showMsgs(cid){
+  C=cid;hide('pnDetail');show('pnMsgs')
+  E('msgTitle').textContent='对话 #'+cid
+  E('msgList').innerHTML='<div class=emp>加载中...</div>'
+  api('GET','/conversations/'+cid+'/messages?limit=200',null,function(msgs){
+    if(!msgs||!msgs.length){E('msgList').innerHTML='<div class=emp>暂无消息</div>';return}
+    var h=''
+    for(var i=0;i<msgs.length;i++){var m=msgs[i],cls=m.role==='user'?'bub-user':'bub-ai'
+      h+='<div style=display:flex;flex-direction:column><div class="'+cls+'">'+(m.role==='user'?'<span class="tag tg-user">用户</span>':'<span class="tag tg-ai">AI</span>')+(m.content||'')
+      h+='<div style=font-size:10px;color:#aaa;margin-top:3px>'+((m.time||'').substring(0,19))+'</div></div></div>'}
+    E('msgList').innerHTML=h
+  })
+}
+E('delConvBtn').onclick=function(){if(!C||!confirm('删除？'))return;api('DELETE','/conversations/'+C,null,function(){hide('pnMsgs');show('pnDetail');loadConvs()})}
+
+function loadAssess(){
+  E('tAssess').innerHTML='<div class=emp>加载中...</div>'
+  api('GET','/users/'+U+'/assessments',null,function(list){
+    if(!list||!list.length){E('tAssess').innerHTML='<div class=emp>暂无评测</div>';return}
+    var h=''
+    for(var i=0;i<list.length;i++){var a=list[i]
+      h+='<div class=item><div class=row><div><div class=item-t>总分:'+(a.score||0)+' 准确:'+(a.accuracy||0)+' 流利:'+(a.fluency||0)+' 完整:'+(a.integrity||0)+' 标准:'+(a.standard||0)+'</div>'
+      h+='<div class=item-m>'+(a.text||'').substring(0,200)+'</div><div class=item-m>'+(a.created_at||'')+'</div></div>'
+      h+='<button class="btn btn-dgr" onclick="delA('+a.id+')">删除</button></div></div>'}
+    E('tAssess').innerHTML=h
+  })
+}
+
+function loadMems(){
+  E('tMems').innerHTML='<div class=emp>加载中...</div>'
+  api('GET','/users/'+U+'/memories',null,function(list){
+    if(!list||!list.length){E('tMems').innerHTML='<div class=emp>暂无记忆</div>';return}
+    var h=''
+    for(var i=0;i<list.length;i++){var m=list[i]
+      h+='<div class=item><div class=row><div><div class=item-t>'+(m.key&&m.key!=='_summary'?m.key+': ':'')+(m.content||'')+'</div>'
+      h+='<div class=item-m>重要:'+(m.importance||0)+' | '+(m.created_at||'')+'</div></div>'
+      h+='<button class="btn btn-dgr" onclick="delM('+m.id+')">删除</button></div></div>'}
+    E('tMems').innerHTML=h
+  })
+}
+
+function loadFiles(){
+  E('tFiles').innerHTML='<div class=emp>加载中...</div>'
+  api('GET','/users/'+U+'/files',null,function(list){
+    if(!list||!list.length){E('tFiles').innerHTML='<div class=emp>暂无文件</div>';return}
+    var h='<table><tr><th>文件名</th><th>类型</th><th>大小</th><th>时间</th><th>操作</th></tr>'
+    for(var i=0;i<list.length;i++){var f=list[i]
+      var sz=f.file_size?(f.file_size>1024?(f.file_size/1024).toFixed(1)+'KB':f.file_size+'B'):'-'
+      h+='<tr><td>'+(f.filename||'-')+'</td><td>'+(f.file_type||'-')+'</td><td>'+sz+'</td><td style=font-size:11px;color:#999>'+(f.created_at||'').substring(0,16)+'</td>'
+      h+='<td><button class="btn btn-dgr" onclick="delF('+f.id+')">删除</button></td></tr>'}
+    h+='</table>';E('tFiles').innerHTML=h
+  })
+}
+
+function delA(id){if(!confirm('删除此评测记录？'))return;api('DELETE','/assessments/'+id,null,function(){loadAssess()})}
+function delM(id){if(!confirm('删除此记忆？'))return;api('DELETE','/memories/'+id,null,function(){loadMems()})}
+function delF(id){if(!confirm('删除此文件？磁盘上的文件也会被清理。'))return;api('DELETE','/files/'+id,null,function(){loadFiles()})}
+function editU(uid){var n=prompt('昵称:','');if(n!==null)api('PUT','/users/'+uid,{nickname:n||'-'},refreshUsers)}
+function delU(uid){if(confirm('确定删除？'))api('DELETE','/users/'+uid,null,refreshUsers)}
+
+// Init
+E('pgLogin').classList.add('visible')
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-07-22
+> 最后更新：2026-07-27
 
 ## 项目概述
 
@@ -416,3 +416,33 @@ git add -A && git commit -m "msg" && git push origin master
 # 数据库
 mysql -S /tmp/mysql.sock -u root -p
 ```
+
+---
+
+## 2026-07-27 更新
+
+### 域名迁移
+- 域名从 `luois-james.xyz` 迁移到 `yyzhilingweilai.com`
+- 安装了 Let's Encrypt SSL 证书，Nginx 配置 HTTPS
+- 后端所有硬编码 URL 全部更新，旧域名文件清理逻辑已兼容
+
+### 管理后台
+- 新增 `/admin` 管理后台页面（HTML5 SPA）
+- 支持用户 CRUD、对话查看、评测/记忆/文件管理
+- 管理 API 位于 `/api/v1/admin/*`，Token 有效期 8 小时
+- 管理员密码在 `server/.env` 的 `ADMIN_PASSWORD` 配置
+
+### 会话标题自动命名
+- 新会话默认显示创建时间戳
+- 第一条消息发送后，AI 根据对话内容自动生成标题（5-15 字）
+- 使用 DeepSeek 生成标题（不依赖 OpenClaw）
+
+### 手机号绑定
+- 新增 `POST /api/v1/user/bind-phone` 解密微信手机号
+- 一个手机号只能绑定一个账号
+
+### 语音测评
+- 前端新增"换一句"按钮，可重新生成评测文本
+
+### uvicorn 并发提升
+- Workers 从 2 提升到 4，并发能力翻倍

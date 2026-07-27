@@ -1,6 +1,9 @@
 from app.database import get_db
+from datetime import datetime
 
-def create(uid: int, title: str = "新的对话") -> int:
+def create(uid: int, title: str = None) -> int:
+    if title is None:
+        title = datetime.now().strftime("%m月%d日 %H:%M")
     with get_db() as db:
         cur = db.cursor()
         cur.execute("INSERT INTO conversations (user_id, title) VALUES (%s, %s)", (uid, title))

@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from app.routers import auth, user, chat, voice, latex_proxy
+from app.routers import auth, user, chat, voice, latex_proxy, admin
 import os
 
 app = FastAPI(title="AI Chat API", version="1.0", docs_url=None, redoc_url=None)
@@ -30,6 +31,12 @@ app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(voice.router)
 app.include_router(latex_proxy.router)
+app.include_router(admin.router)
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    with open("/opt/wx-miniapp-ai/admin/index.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 @app.get("/")
 async def root(): return {"service": "AI Chat Server", "version": "1.0"}
@@ -41,4 +48,3 @@ if __name__ == "__main__":
     import uvicorn
     from app.config import HOST, PORT, DEBUG
     uvicorn.run("app.main:app", host=HOST, port=PORT, reload=DEBUG)
-

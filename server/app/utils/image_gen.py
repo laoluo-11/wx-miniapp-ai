@@ -49,4 +49,4 @@ async def generate_image(prompt: str, size: str = "1024*1024") -> str | None:
     with open(path, "wb") as f:
         f.write(img_data)
 
-    return f"https://luois-james.xyz/static/{name}"
+    return f"https://yyzhilingweilai.com/static/{name}"

@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/latex", tags=["LaTeX"])
 CODEGOGS = "https://latex.codecogs.com/svg.latex?%5Ccolor%7Bwhite%7D%20"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", "latex")
 os.makedirs(CACHE_DIR, exist_ok=True)
-STATIC_BASE = "https://luois-james.xyz/static/latex/"
+STATIC_BASE = "https://yyzhilingweilai.com/static/latex/"
 
 
 @router.get("")

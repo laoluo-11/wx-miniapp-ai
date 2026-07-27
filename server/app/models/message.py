@@ -20,7 +20,7 @@ def get_history(cid: int, before: int = None, limit: int = 40) -> list:
             cur.execute("""SELECT id, role, content, created_at FROM messages
                            WHERE conversation_id = %s
                            ORDER BY id DESC LIMIT %s""", (cid, limit))
-        rows = cur.fetchall()
+        rows = list(cur.fetchall())
         rows.reverse()
         return rows
 
@@ -30,13 +30,15 @@ def get_recent_pairs(cid: int, rounds: int = 10) -> list:
         cur.execute("""SELECT role, content FROM messages
                        WHERE conversation_id = %s ORDER BY id DESC LIMIT %s""",
                     (cid, rounds * 2))
-        rows = cur.fetchall()
+        rows = list(cur.fetchall())
         rows.reverse()
         return rows
 import os as _os
 
-_STATIC_PREFIX = "https://luois-james.xyz/static/"
-_RECEIVE_PREFIX = "https://luois-james.xyz/receive/"
+_STATIC_PREFIX = "https://yyzhilingweilai.com/static/"
+_RECEIVE_PREFIX = "https://yyzhilingweilai.com/receive/"
+_OLD_RECEIVE_PREFIX = "https://luois-james.xyz/receive/"
+_OLD_STATIC_PREFIX = "https://luois-james.xyz/static/"
 _RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 _UPLOAD_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads")
 
@@ -47,6 +49,8 @@ def _cleanup_static_files(contents: list):
     prefixes = [
         (_STATIC_PREFIX, _UPLOAD_DIR),
         (_RECEIVE_PREFIX, _RECEIVE_DIR),
+        (_OLD_STATIC_PREFIX, _UPLOAD_DIR),
+        (_OLD_RECEIVE_PREFIX, _RECEIVE_DIR),
     ]
     all_urls = []
     for ct in contents:
@@ -143,7 +147,7 @@ def delete_by_ids(cid: int, ids: list) -> int:
         _cleanup_static_files(contents)
         # 清理 user_files 表中的 receive 文件记录
         for ct in contents:
-            if ct and isinstance(ct, str) and ct.startswith(_RECEIVE_PREFIX):
+            if ct and isinstance(ct, str) and (ct.startswith(_RECEIVE_PREFIX) or ct.startswith(_OLD_RECEIVE_PREFIX)):
                 try:
                     cur.execute(
                         "DELETE FROM user_files WHERE file_url = %s",

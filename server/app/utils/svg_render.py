@@ -52,7 +52,7 @@ def svg_save(svg_code: str) -> str | None:
         path = os.path.join(UPLOAD_DIR, name)
         with open(path, "w", encoding="utf-8") as f:
             f.write(svg_code)
-        return f"https://luois-james.xyz/static/{name}"
+        return f"https://yyzhilingweilai.com/static/{name}"
     except Exception as e:
         print(f"[SVG] save failed: {e}")
         return None

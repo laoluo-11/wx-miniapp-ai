@@ -205,15 +205,23 @@ async def chat(messages: list, uid: int = None, model: str = None, system: str =
     )
 
 
-async def gen_title(first_msg: str, uid: int = None) -> str:
-    model = OPENCLAW_MODEL if OPENCLAW_TOKEN else LLM_MODEL
-    result = await _call_llm(
-        [{"role": "user", "content": first_msg}],
-        model=model,
-        system="用5-10个字概括用户意图，只返回标题。",
-        temperature=0.3, max_tokens=30, timeout=30
-    )
-    return result.strip()
+async def gen_title(first_msg: str, uid: int = None, reply: str = None) -> str:
+    prompt = first_msg
+    if reply:
+        prompt = f"用户: {first_msg[:100]}\nAI回复: {reply[:100]}"
+    model = LLM_MODEL
+    try:
+        result = await _call_llm(
+            [{"role": "user", "content": prompt}],
+            model=model,
+            system="根据对话内容，用5-15个字总结为一个标题，直接返回标题不要引号。",
+            temperature=0.3, max_tokens=30, timeout=15
+        )
+        return result.strip()
+    except Exception:
+        if reply:
+            return reply.strip()[:20]
+        return first_msg.strip()[:20]
 
 
 async def chat_stream(messages: list, uid: int = None, model: str = None, system: str = None):

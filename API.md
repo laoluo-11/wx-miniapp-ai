@@ -1,7 +1,7 @@
 # ZLWL 智能聊天 — API 文档
 
-**更新日期**: 2026-07-22
-**Base URL**: `https://luois-james.xyz`
+**更新日期**: 2026-07-27
+**Base URL**: `https://yyzhilingweilai.com`
 **API 前缀**: `/api/v1`
 
 ---
@@ -423,3 +423,49 @@ GET /health  →  {"status": "ok"}
 GET /        →  {"service": "AI Chat Server", "version": "1.0"}
 ```
 无需鉴权。
+
+---
+
+## 管理后台 API
+
+> 管理员通过 `/admin` 页面登录后使用，所有端点需 `Authorization: Bearer <token>` 头
+
+### 登录
+```
+POST /api/v1/admin/login
+Body: {"password": "xxx"}
+→ {"token": "..."}
+```
+
+### 用户管理
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/admin/stats` | GET | 系统统计（用户数、对话数等） |
+| `/api/v1/admin/users?page=1&limit=20&search=xxx` | GET | 用户列表 |
+| `/api/v1/admin/users/{id}` | GET | 用户详情（含统计数据） |
+| `/api/v1/admin/users/{id}` | PUT | 更新用户（nickname/phone/avatar_url） |
+| `/api/v1/admin/users/{id}` | DELETE | 删除用户（级联清除所有数据） |
+
+### 用户数据管理
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/admin/users/{id}/conversations` | GET | 用户的对话列表 |
+| `/api/v1/admin/conversations/{cid}/messages?limit=200` | GET | 查看对话消息 |
+| `/api/v1/admin/conversations/{cid}` | DELETE | 删除对话（清理文件） |
+| `/api/v1/admin/users/{id}/assessments` | GET | 用户评测记录 |
+| `/api/v1/admin/assessments/{id}` | DELETE | 删除评测记录 |
+| `/api/v1/admin/users/{id}/memories` | GET | AI 记忆 |
+| `/api/v1/admin/memories/{id}` | DELETE | 删除记忆 |
+| `/api/v1/admin/users/{id}/files` | GET | 上传文件列表 |
+| `/api/v1/admin/files/{id}` | DELETE | 删除文件（清理磁盘） |
+
+---
+
+## 手机号绑定
+
+```
+POST /api/v1/user/bind-phone
+Body: {"encrypted_data": "...", "iv": "..."}
+→ {"msg": "ok", "phone": "138****8888"}
+```
+每个手机号只能绑定一个账号。
