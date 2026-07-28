@@ -5,6 +5,10 @@ import os as _os
 RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
 _os.makedirs(RECEIVE_DIR, exist_ok=True)
 
+# AI-generated images / SVG diagrams go here
+UPLOAD_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads")
+_os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 FILE_URL_PREFIX = "https://yyzhilingweilai.com/receive/"
 
 
@@ -62,9 +66,21 @@ def delete_by_conversation(cid: int):
 
 
 def _cleanup_file(url: str):
+    # Handle receive/ files (user uploads)
     if url.startswith(FILE_URL_PREFIX):
         filename = url[len(FILE_URL_PREFIX):]
         filepath = _os.path.join(RECEIVE_DIR, filename)
+        if _os.path.exists(filepath):
+            try:
+                _os.remove(filepath)
+                print(f"[FileCleanup] Deleted: {filepath}")
+            except Exception as e:
+                print(f"[FileCleanup] Failed: {filepath}: {e}")
+    # Handle static/ files (AI-generated images, SVG diagrams)
+    STATIC_PREFIX = "https://yyzhilingweilai.com/static/"
+    if url.startswith(STATIC_PREFIX):
+        filename = url[len(STATIC_PREFIX):]
+        filepath = _os.path.join(UPLOAD_DIR, filename)
         if _os.path.exists(filepath):
             try:
                 _os.remove(filepath)

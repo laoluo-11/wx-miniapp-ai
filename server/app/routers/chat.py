@@ -7,6 +7,7 @@ from app.utils.deep_agent import chat_deep, chat_deep_stream
 from app.utils.image_gen import generate_image
 from app.utils.svg_render import svg_save
 from app.utils.diagram_prompt import DIAGRAM_SYSTEM_PROMPT
+from app.utils.intent import classify_intent
 from app.utils.memory_manager import build_context, get_all as get_memories, add as add_memory, delete as delete_memory, maybe_compress
 from app.models import conversation as conv_db, stats as stats_db
 from app.models import message as msg_db
@@ -217,6 +218,47 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
 
     title = None
 
+    # === Intent-based routing ===
+    from app.config import USE_INTENT_CLASSIFIER
+    from app.utils.image_gen import generate_image as gen_img
+
+    if USE_INTENT_CLASSIFIER:
+        has_file = any("receive/" in m.get("content", "") for m in messages)
+        has_image_file = any(
+            ("receive/" in m.get("content", "") and
+             any(m.get("content", "").lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]))
+            for m in messages
+        )
+        intent_result = await classify_intent(messages[-1]["content"], has_file=has_file, has_image_file=has_image_file)
+        print(f"[Intent] {intent_result}", flush=True)
+
+        if intent_result.get("intent") == "image":
+            # Direct image generation, bypass LLM chat
+            prompt = intent_result.get("prompt", messages[-1]["content"])
+            print(f"[Intent:IMAGE] Generating: {prompt[:100]}", flush=True)
+            img_url = await gen_img(prompt)
+            if img_url:
+                msg_db.save(cid, "assistant", img_url)
+                conv_db.touch(cid)
+                if is_new:
+                    title = prompt[:20]
+                    conv_db.update_title(cid, title)
+                # Record in user_files for admin panel
+                try:
+                    from app.models.file import save as _fs
+                    fn = img_url.split("/")[-1].split("?")[0]
+                    ex = os.path.splitext(fn)[1].lower()
+                    ft = "image" if ex in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+                    _fs(uid, fn, img_url, 0, ft, cid)
+                except Exception:
+                    pass
+                return StreamingResponse(
+                    iter([f"\n__META__{{\"conversation_id\": {cid}, \"reply\": \"\", \"title\": \"{title or ''}\", \"image_url\": \"{img_url}\"}}"]),
+                    media_type="text/plain; charset=utf-8"
+                )
+            # Fallback: let LLM handle it
+            print("[Intent:IMAGE] generate_image failed, falling back to LLM", flush=True)
+
     async def generate():
         nonlocal title
         full_reply = ""
@@ -425,6 +467,44 @@ async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
     for i, h in enumerate(history):
         content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
         messages.append({"role": h["role"], "content": content})
+
+    # === Intent-based routing ===
+    from app.config import USE_INTENT_CLASSIFIER
+    from app.utils.image_gen import generate_image as gen_img
+
+    if USE_INTENT_CLASSIFIER:
+        has_file = any("receive/" in m.get("content", "") for m in messages)
+        has_image_file = any(
+            ("receive/" in m.get("content", "") and
+             any(m.get("content", "").lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]))
+            for m in messages
+        )
+        intent_result = await classify_intent(messages[-1]["content"], has_file=has_file, has_image_file=has_image_file)
+        print(f"[Intent-Deep] {intent_result}", flush=True)
+
+        if intent_result.get("intent") == "image":
+            prompt = intent_result.get("prompt", messages[-1]["content"])
+            print(f"[Intent-Deep:IMAGE] Generating: {prompt[:100]}", flush=True)
+            img_url = await gen_img(prompt)
+            if img_url:
+                msg_db.save(cid, "assistant", img_url)
+                conv_db.touch(cid)
+                if is_new:
+                    title = prompt[:20]
+                    conv_db.update_title(cid, title)
+                # Record in user_files for admin panel
+                try:
+                    from app.models.file import save as _fs
+                    fn = img_url.split("/")[-1].split("?")[0]
+                    ex = os.path.splitext(fn)[1].lower()
+                    ft = "image" if ex in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+                    _fs(uid, fn, img_url, 0, ft, cid)
+                except Exception:
+                    pass
+                return StreamingResponse(
+                    iter([f"\n__META__{{\"conversation_id\": {cid}, \"reply\": \"\", \"title\": \"{title or ''}\", \"image_url\": \"{img_url}\"}}"]),
+                    media_type="text/plain; charset=utf-8"
+                )
 
     async def stream_deep():
         full_reply = ""

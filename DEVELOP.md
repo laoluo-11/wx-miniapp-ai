@@ -470,3 +470,35 @@ mysql -S /tmp/mysql.sock -u root -p
 - 修复 admin 页面 `id^=t` 选择器误匹配 tabBar 导致标签页消失
 - 管理后台查看消息支持图片缩略图显示
 - 管理后台 JS 全面改用传统 for 循环，避免兼容性问题
+
+
+---
+
+## 2026-07-28 意图分类 + 图片路由优化
+
+### 意图分类器 (intent.py)
+
+在聊天流程前增加独立的意图判断步骤，将用户请求分为四类：
+
+| intent | 触发条件 | 处理方式 |
+|--------|----------|----------|
+| `image` | "画一匹马"等纯生图请求 | 跳过 LLM，直接千问 qwen-image-max 生图 |
+| `diagram` | 流程图/架构图/几何等配图需求 | LLM 回复文字 + SVG 示意图 |
+| `analyze` | 上传图片/文件要求分析 | LLM 分析文件内容 |
+| `text` | 普通问答/翻译/计算 | 纯文字 LLM 回复 |
+
+优点：
+- 纯生图请求从 ~10s 降至 ~2s
+- 纯文字聊天不再加载 diagram prompt，省 token
+- 分类失败自动降级为 text
+- 环境变量 `USE_INTENT_CLASSIFIER=true/false` 可随时回退
+
+涉及文件：
+- 新增 `server/app/utils/intent.py`
+- 修改 `server/app/config.py` — 新增开关
+- 修改 `server/app/routers/chat.py` — /send 和 /send-deep-stream 新增路由
+
+### Bugfix
+
+- AI 生成图片未写入 user_files 表 → 管理后台「用户-文件」看不到
+- 管理后台删文件只删 DB 不删磁盘 (static/ 前缀文件) → 已修复 _cleanup_file

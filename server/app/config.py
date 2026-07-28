@@ -36,6 +36,7 @@ QWEN_API_HOST = os.getenv("QWEN_API_HOST", "")
 QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "")
 QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3-omini")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123456")
+USE_INTENT_CLASSIFIER = os.getenv("USE_INTENT_CLASSIFIER", "false").lower() == "true"
 
 # 用量限额（用户 / 会员）
 USAGE_CHAT_USER = int(os.getenv("USAGE_CHAT_USER", "20"))
