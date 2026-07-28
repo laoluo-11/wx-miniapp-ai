@@ -446,6 +446,9 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(current
     name = f"{uuid.uuid4().hex}{ext}"
     # Save to receive/ directory
     from app.models.file import RECEIVE_DIR, save as file_save
+    from app.utils.usage import track as usage_track, check as usage_check
+    if not usage_check(user, "upload"):
+        raise HTTPException(429, f"今日上传次数已用完")
     receive_path = os.path.join(RECEIVE_DIR, name)
     os.makedirs(RECEIVE_DIR, exist_ok=True)
     with open(receive_path, "wb") as f:

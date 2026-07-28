@@ -13,6 +13,7 @@ class UpdateReq(BaseModel):
 async def info(user: dict = Depends(current_user)):
     return {"id": user["id"], "openid": user["openid"], "nickname": user.get("nickname"),
             "avatar_url": user.get("avatar_url"), "phone": user.get("phone"),
+            "role": user.get("role", "user"), "vip_expires_at": str(user.get("vip_expires_at")) if user.get("vip_expires_at") else None,
             "created_at": str(user.get("created_at", ""))}
 
 @router.put("/profile")
@@ -23,6 +24,16 @@ async def profile(req: UpdateReq, user: dict = Depends(current_user)):
     if not kw: raise HTTPException(400, "无更新字段")
     update(user["id"], **kw)
     return {"msg": "ok"}
+
+@router.get("/usage")
+async def my_usage(user: dict = Depends(current_user)):
+    from app.utils.usage import get_today, get_limits
+    return {
+        "usage": get_today(user["id"]),
+        "limits": get_limits(user.get("role", "user")),
+        "role": user.get("role", "user"),
+        "vip_expires_at": str(user.get("vip_expires_at")) if user.get("vip_expires_at") else None
+    }
 
 
 from pydantic import BaseModel

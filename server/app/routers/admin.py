@@ -13,6 +13,8 @@ class UserUpdate(BaseModel):
     nickname: str | None = None
     avatar_url: str | None = None
     phone: str | None = None
+    role: str | None = None
+    vip_days: int | None = None
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()

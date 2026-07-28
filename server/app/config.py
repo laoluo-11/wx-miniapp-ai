@@ -36,3 +36,14 @@ QWEN_API_HOST = os.getenv("QWEN_API_HOST", "")
 QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "")
 QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3-omini")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123456")
+
+# 用量限额（用户 / 会员）
+USAGE_CHAT_USER = int(os.getenv("USAGE_CHAT_USER", "20"))
+USAGE_CHAT_VIP = int(os.getenv("USAGE_CHAT_VIP", "120"))
+USAGE_VOICE_USER = int(os.getenv("USAGE_VOICE_USER", "3"))
+USAGE_VOICE_VIP = int(os.getenv("USAGE_VOICE_VIP", "15"))
+USAGE_SPEAK_USER = int(os.getenv("USAGE_SPEAK_USER", "20"))
+USAGE_SPEAK_VIP = int(os.getenv("USAGE_SPEAK_VIP", "120"))
+USAGE_UPLOAD_USER = int(os.getenv("USAGE_UPLOAD_USER", "3"))
+USAGE_UPLOAD_VIP = int(os.getenv("USAGE_UPLOAD_VIP", "15"))
+

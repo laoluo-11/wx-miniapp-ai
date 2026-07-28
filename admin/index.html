@@ -138,6 +138,12 @@ E('logoutBtn').onclick=function(){T=null;E('pgApp').classList.remove('visible');
 E('searchBtn').onclick=refreshUsers
 
 function refreshAll(){refreshStats();refreshUsers()}
+function loadUsage(uid){
+  api('GET','/users/'+uid+'/usage?days=7',null,function(d){
+    var h='';for(var i=0;i<(d||[]).length;i++){h+=d[i].metric+': '+d[i].total+'次 '}
+    alert('近7天用量:\n'+(h||'暂无数据'))
+  })
+}
 
 function refreshStats(){
   api('GET','/stats',null,function(d){
@@ -250,7 +256,22 @@ function loadFiles(){
 function delA(id){if(!confirm('删除此评测记录？'))return;api('DELETE','/assessments/'+id,null,function(){loadAssess()})}
 function delM(id){if(!confirm('删除此记忆？'))return;api('DELETE','/memories/'+id,null,function(){loadMems()})}
 function delF(id){if(!confirm('删除此文件？磁盘上的文件也会被清理。'))return;api('DELETE','/files/'+id,null,function(){loadFiles()})}
-function editU(uid){var n=prompt('昵称:','');if(n!==null)api('PUT','/users/'+uid,{nickname:n||'-'},refreshUsers)}
+function editU(uid){
+  api('GET','/users/'+uid,null,function(u){
+    var n=prompt('昵称:',(u.nickname||''));if(n===null)return
+    var p=prompt('手机号:',(u.phone||''));if(p===null)return
+    var body={};if(n!==u.nickname)body.nickname=n;if(p!==u.phone)body.phone=p
+    if(Object.keys(body).length)api('PUT','/users/'+uid,body,refreshUsers)
+  })
+}
+function vipUser(uid){
+  api('GET','/users/'+uid,null,function(u){
+    var days=prompt('VIP天数 (0=取消VIP, -1=永久):',(u.role==='vip'?'30':'30'))
+    if(days===null)return
+    days=parseInt(days)
+    api('PUT','/users/'+uid,{role:days<=0?'user':'vip',vip_days:days>0?days:36500},function(){alert('已更新');refreshUsers()})
+  })
+}
 function delU(uid){if(confirm('确定删除？'))api('DELETE','/users/'+uid,null,refreshUsers)}
 
 // Init

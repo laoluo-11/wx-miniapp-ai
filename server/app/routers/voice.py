@@ -58,6 +58,9 @@ async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
     """口语对练：发送音频或文本，获取 AI 回复"""
     try:
         if req.audio:
+            from app.utils.usage import track, check
+            if not check(user, "speak"):
+                return {"text": "今日口语对练次数已用完", "history": req.history or []}
             import base64 as _b64
             audio_data = _b64.b64decode(req.audio)
             result = await chat_with_audio(
@@ -68,10 +71,14 @@ async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
                 speed=req.speed
             )
         elif req.text:
+            from app.utils.usage import track, check
+            if not check(user, "speak"):
+                return {"text": "今日口语对练次数已用完", "history": req.history or []}
             result = await chat_text_only(req.text, history=req.history, voice=req.voice, speed=req.speed)
         else:
             return {"text": "", "history": req.history or [], "error": "请提供音频或文本"}
         
+        track(user["id"], "speak")
         return {
             "text": result["text"],
             "audio_url": result.get("audio_url", ""),
@@ -153,6 +160,10 @@ async def assess_raw(request: Request, user: dict = Depends(current_user)):
         text = "The weather is beautiful today."
 
     try:
+        from app.utils.usage import track, check
+        if not check(user, "voice_assess"):
+            return {"score": 0, "comment": f"今日评测次数已用完", "dimensions": []}
+        track(user["id"], "voice_assess")
         result = await xf_assess(audio_data, text.strip(), category="read_sentence", ent="en_vip")
         print(f"ISE_RESULT: {json.dumps(result, ensure_ascii=False)[:5000]}", flush=True)
         try:
