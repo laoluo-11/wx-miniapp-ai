@@ -285,6 +285,13 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
                 save_text += f"\n\n![diagram]({url})"
             else:
                 msg_db.save(cid, "assistant", url)
+                # 记录AI生成文件
+                from app.models.file import RECEIVE_DIR, FILE_URL_PREFIX, save as file_save
+                fname = url.split("/")[-1].split("?")[0] if "/" in url else url
+                fext = os.path.splitext(fname)[1].lower()
+                ftype = "image" if fext in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+                try: file_save(uid, fname, url, 0, ftype, cid)
+                except Exception: pass
         if save_text.strip():
             msg_db.save(cid, "assistant", save_text.strip())
         conv_db.touch(cid)
@@ -356,6 +363,12 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
             save_text += "\n\n![diagram](" + url + ")"
         else:
             msg_db.save(cid, "assistant", url)
+            from app.models.file import RECEIVE_DIR, FILE_URL_PREFIX, save as file_save
+            fname = url.split("/")[-1].split("?")[0] if "/" in url else url
+            fext = os.path.splitext(fname)[1].lower()
+            ftype = "image" if fext in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+            try: file_save(uid, fname, url, 0, ftype, cid)
+            except Exception: pass
     if save_text.strip():
         msg_db.save(cid, "assistant", save_text.strip())
     conv_db.touch(cid)
@@ -430,6 +443,12 @@ async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
                 save_text += "\n\n![diagram](" + url + ")"
             else:
                 msg_db.save(cid, "assistant", url)
+                from app.models.file import RECEIVE_DIR, FILE_URL_PREFIX, save as file_save
+                fname = url.split("/")[-1].split("?")[0] if "/" in url else url
+                fext = os.path.splitext(fname)[1].lower()
+                ftype = "image" if fext in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+                try: file_save(uid, fname, url, 0, ftype, cid)
+                except Exception: pass
         if save_text.strip():
             msg_db.save(cid, "assistant", save_text.strip())
         conv_db.touch(cid)
