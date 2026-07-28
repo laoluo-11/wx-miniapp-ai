@@ -286,11 +286,12 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
             else:
                 msg_db.save(cid, "assistant", url)
                 # 记录AI生成文件
-                from app.models.file import RECEIVE_DIR, FILE_URL_PREFIX, save as file_save
-                fname = url.split("/")[-1].split("?")[0] if "/" in url else url
-                fext = os.path.splitext(fname)[1].lower()
-                ftype = "image" if fext in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
-                try: file_save(uid, fname, url, 0, ftype, cid)
+                try:
+                    from app.models.file import save as _fs
+                    fn = url.split("/")[-1].split("?")[0] if "/" in url else url
+                    ex = os.path.splitext(fn)[1].lower()
+                    ft = "image" if ex in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+                    _fs(uid, fn, url, 0, ft, cid)
                 except Exception: pass
         if save_text.strip():
             msg_db.save(cid, "assistant", save_text.strip())
@@ -443,11 +444,12 @@ async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
                 save_text += "\n\n![diagram](" + url + ")"
             else:
                 msg_db.save(cid, "assistant", url)
-                from app.models.file import RECEIVE_DIR, FILE_URL_PREFIX, save as file_save
-                fname = url.split("/")[-1].split("?")[0] if "/" in url else url
-                fext = os.path.splitext(fname)[1].lower()
-                ftype = "image" if fext in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
-                try: file_save(uid, fname, url, 0, ftype, cid)
+                try:
+                    from app.models.file import save as _fs
+                    fn = url.split("/")[-1].split("?")[0] if "/" in url else url
+                    ex = os.path.splitext(fn)[1].lower()
+                    ft = "image" if ex in [".jpg", ".jpeg", ".png", ".gif", ".webp"] else "file"
+                    _fs(uid, fn, url, 0, ft, cid)
                 except Exception: pass
         if save_text.strip():
             msg_db.save(cid, "assistant", save_text.strip())
