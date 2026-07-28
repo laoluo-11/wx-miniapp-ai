@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
-from app.utils.deep_agent import chat_deep
+from app.utils.deep_agent import chat_deep, chat_deep_stream
 from app.utils.image_gen import generate_image
 from app.utils.svg_render import svg_save
 from app.utils.diagram_prompt import DIAGRAM_SYSTEM_PROMPT
@@ -382,6 +382,76 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
         "title": title,
         "image_url": creative_urls[0] if creative_urls else ""
     }
+
+
+@router.post("/send-deep-stream")
+async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
+    uid = user["id"]
+    cid = req.conversation_id
+    is_new = cid is None
+    existing_msgs = []
+    if is_new:
+        cid = conv_db.create(uid)
+    else:
+        conv = conv_db.get_by_id(cid, uid)
+        if not conv:
+            raise HTTPException(404, "not found")
+        existing_msgs = msg_db.get_history(cid, limit=1)
+    msg_db.save(cid, "user", req.message)
+    from app.utils.usage import track, check as _uc
+    if not _uc(user, "chat"):
+        raise HTTPException(429, "今日对话次数已用完")
+    track(user["id"], "chat")
+    processed = await _resolve_file_message(req.message)
+    if not is_new and not existing_msgs:
+        is_new = True
+    history = msg_db.get_recent_pairs(cid, rounds=6)
+    messages = []
+    last_idx = len(history) - 1
+    for i, h in enumerate(history):
+        content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
+        messages.append({"role": h["role"], "content": content})
+
+    async def stream_deep():
+        full_reply = ""
+        try:
+            async for chunk in chat_deep_stream(messages, uid=uid, system=_build_system_prompt(user)):
+                full_reply += chunk
+                yield chunk
+        except Exception as e:
+            yield f"\n[Deep error: {str(e)}]"
+            return
+
+        clean_text, diagrams = _parse_diagrams(full_reply)
+        image_urls = await _process_diagrams(diagrams)
+        save_text = clean_text.strip() or ""
+        for url in image_urls:
+            if "/diagram_" in url or url.endswith(".svg"):
+                save_text += "\n\n![diagram](" + url + ")"
+            else:
+                msg_db.save(cid, "assistant", url)
+        if save_text.strip():
+            msg_db.save(cid, "assistant", save_text.strip())
+        conv_db.touch(cid)
+        title = None
+        if is_new:
+            try:
+                title = await gen_title(processed, uid=uid, reply=save_text.strip() or full_reply)
+                conv_db.update_title(cid, title)
+            except Exception:
+                title = (save_text.strip() or full_reply or req.message)[:20]
+                conv_db.update_title(cid, title)
+        creative_urls = [url for url in image_urls if not ("/diagram_" in url or url.endswith(".svg"))]
+        meta = json_mod.dumps({
+            "conversation_id": cid,
+            "reply": save_text.strip(),
+            "title": title,
+            "image_url": creative_urls[0] if creative_urls else ""
+        }, ensure_ascii=False)
+        yield f"\n__META__{meta}"
+
+    return StreamingResponse(stream_deep(), media_type="text/plain; charset=utf-8")
+
 
 # ── Conversations ──
 

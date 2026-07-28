@@ -69,6 +69,85 @@ async def _code_exec(code: str) -> str:
         return f"Execution error: {str(e)}"
 
 
+
+
+async def chat_deep_stream(messages: list, uid=None, system="", max_turns=5):
+    '''流式深度对话：逐 chunk 输出，遇工具调用暂停执行后继续'''
+    if not OPENCLAW_TOKEN:
+        from app.utils.llm_client import chat_stream
+        async for chunk in chat_stream(messages, uid=uid):
+            yield chunk
+        return
+
+    full = [{"role": "system", "content": system + SYSTEM_TOOLS}] + messages
+    headers = {
+        "Authorization": f"Bearer {OPENCLAW_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    for turn in range(max_turns):
+        payload = {
+            "model": OPENCLAW_MODEL,
+            "messages": full,
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "stream": True
+        }
+
+        full_content = ""
+        async with httpx.AsyncClient(timeout=120) as c:
+            async with c.stream("POST", f"{OPENCLAW_URL}/chat/completions",
+                                headers=headers, json=payload) as r:
+                if r.status_code != 200:
+                    raise Exception(f"OpenClaw error: {r.status_code}")
+                async for line in r.aiter_lines():
+                    if line.startswith("data: "):
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = _json.loads(data)
+                            delta = chunk["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_content += content
+                                yield content
+                        except Exception:
+                            continue
+
+        # Check for tool calls in the complete response
+        tool_re = re.compile(
+            r'^\s*\{\s*"tool"\s*:\s*"(\w+)"\s*,\s*(.+?)\}\s*$',
+            re.MULTILINE
+        )
+        tool_calls = list(tool_re.finditer(full_content))
+
+        if not tool_calls:
+            return
+
+        # Execute tools
+        results = []
+        for m in tool_calls:
+            tool_name = m.group(1)
+            try:
+                args = _json.loads("{" + m.group(2) + "}")
+            except Exception:
+                continue
+
+            if tool_name == "web_search":
+                result_text = await _web_search(args.get("query", ""))
+            elif tool_name == "code_exec":
+                result_text = await _code_exec(args.get("code", ""))
+            else:
+                result_text = f"Unknown tool: {tool_name}"
+
+            results.append(f"Tool {tool_name}: {result_text[:500]}")
+
+        # Add tool results to message history
+        full.append({"role": "assistant", "content": full_content})
+        full.append({"role": "user", "content": f"Tool results:\n" + "\n".join(results)})
+
+
 async def chat_deep(messages: list, uid=None, system="", max_turns=5) -> str:
     if not OPENCLAW_TOKEN:
         from app.utils.llm_client import chat as llm_chat
