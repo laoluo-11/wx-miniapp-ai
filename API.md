@@ -469,3 +469,28 @@ Body: {"encrypted_data": "...", "iv": "..."}
 → {"msg": "ok", "phone": "138****8888"}
 ```
 每个手机号只能绑定一个账号。
+
+---
+
+## 2026-07-28 更新
+
+### 用户用量接口
+```
+GET /api/v1/user/usage
+→ {"usage": {"chat": 5, "voice_assess": 1}, "limits": {"chat": 20, ...}, "role": "user", "vip_expires_at": null}
+```
+返回当日用量、限额、会员状态和到期时间。
+
+### 管理后台 VIP 管理
+```
+PUT /api/v1/admin/users/{id}
+Body: {"role": "vip", "vip_days": 30}   # 设 VIP 30 天
+Body: {"role": "vip", "vip_days": -1}   # 永久
+Body: {"role": "user"}                  # 取消
+```
+
+### 管理后台用量查询
+```
+GET /api/v1/admin/users/{id}/usage?days=7
+→ [{"metric": "chat", "total": 15}, ...]
+```
