@@ -67,7 +67,7 @@ async def list_users(
             )
             total = cur.fetchone()["cnt"]
             cur.execute(
-                "SELECT id, openid, nickname, phone, avatar_url, created_at, updated_at "
+                "SELECT id, openid, nickname, phone, role, vip_expires_at, avatar_url, created_at, updated_at "
                 "FROM wx_users WHERE nickname LIKE %s OR openid LIKE %s OR phone LIKE %s "
                 "ORDER BY id DESC LIMIT %s OFFSET %s",
                 (like, like, like, limit, offset)
@@ -76,7 +76,7 @@ async def list_users(
             cur.execute("SELECT COUNT(*) as cnt FROM wx_users")
             total = cur.fetchone()["cnt"]
             cur.execute(
-                "SELECT id, openid, nickname, phone, avatar_url, created_at, updated_at "
+                "SELECT id, openid, nickname, phone, role, vip_expires_at, avatar_url, created_at, updated_at "
                 "FROM wx_users ORDER BY id DESC LIMIT %s OFFSET %s",
                 (limit, offset)
             )
@@ -125,6 +125,7 @@ async def update_user(uid: int, req: UserUpdate, authorization: str = Header(Non
             from datetime import datetime, timedelta
             kw["vip_expires_at"] = (datetime.now() + timedelta(days=req.vip_days)).strftime("%Y-%m-%d %H:%M:%S")
         else:
+            kw["role"] = "user"
             kw["vip_expires_at"] = None
     if not kw:
         raise HTTPException(400, "\u65e0\u66f4\u65b0\u5b57\u6bb5")
@@ -274,3 +275,14 @@ async def admin_delete_file(fid: int, authorization: str = Header(None)):
     if not del_file(fid):
         raise HTTPException(404, "记录不存在")
     return {"msg": "ok"}
+@router.get("/users/{uid}/usage")
+async def admin_user_usage(uid: int, days: int = Query(7, ge=1, le=30), authorization: str = Header(None)):
+    _verify_token(authorization)
+    with get_db() as db:
+        cur = db.cursor()
+        cur.execute(
+            "SELECT metric, SUM(count) as total FROM usage_stats "
+            "WHERE user_id=%s AND date >= DATE_SUB(CURDATE(), INTERVAL %s DAY) "
+            "GROUP BY metric", (uid, days)
+        )
+        return cur.fetchall()

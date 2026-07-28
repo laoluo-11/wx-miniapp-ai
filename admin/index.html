@@ -140,7 +140,10 @@ function loadU(){
   })
 }
 
-function viewU(uid){U=uid;E('pnUsers').classList.add('hidden');E('pnDetail').classList.remove('hidden');E('pnMsgs').classList.add('hidden');switchT('convs')}
+function viewU(uid){U=uid;E('pnUsers').classList.add('hidden');E('pnMsgs').classList.add('hidden');E('pnDetail').classList.remove('hidden')
+var divs=document.querySelectorAll('#tConvs,#tAssess,#tMems,#tFiles,#tUsage');for(var i=0;i<divs.length;i++){divs[i].classList.add('hidden');divs[i].innerHTML=''}
+var tabs=document.querySelectorAll('#tabBar .tab');for(var j=0;j<tabs.length;j++){tabs[j].classList.toggle('act',j===0)}
+E('tConvs').classList.remove('hidden');loadConv()}
 function backU(){E('pnDetail').classList.add('hidden');E('pnUsers').classList.remove('hidden')}
 function backD(){E('pnMsgs').classList.add('hidden');E('pnDetail').classList.remove('hidden')}
 E('backBtn').onclick=backU;E('backBtn2').onclick=backD
@@ -168,8 +171,8 @@ function delU(uid){if(confirm('确定删除？'))api('DELETE','/users/'+uid,null
 E('tabBar').onclick=function(e){
   if(!e.target.classList.contains('tab'))return
   var t=e.target.dataset.tab
-  document.querySelectorAll('#tabBar .tab').forEach(function(el){el.classList.toggle('act',el.dataset.tab===t)})
-  document.querySelectorAll('#pnDetail > div[id^=t]').forEach(function(el){el.classList.add('hidden')})
+  var tabs=document.querySelectorAll('#tabBar .tab');for(var i=0;i<tabs.length;i++){tabs[i].classList.toggle('act',tabs[i].dataset.tab===t)}
+  var divs=document.querySelectorAll('#tConvs,#tAssess,#tMems,#tFiles,#tUsage');for(var i=0;i<divs.length;i++){divs[i].classList.add('hidden')}
   switchT(t)
 }
 function switchT(tab){
