@@ -5,4 +5,5 @@ logs/
 uploads/
 .DS_Store
 *.log
+receive/
 
