@@ -131,9 +131,9 @@ function loadS(){
 function loadU(){
   var q=E('searchIn').value
   api('GET','/users?limit=50'+(q?'&search='+encodeURIComponent(q):''),null,function(d){
-    var h='<table><tr><th>ID</th><th>昵称</th><th>手机号</th><th>身份</th><th>操作</th></tr>'
+    var h='<table><tr><th>ID</th><th>昵称</th><th>手机号</th><th>会员</th><th>到期</th><th>操作</th></tr>'
     for(var i=0;i<(d.users||[]).length;i++){var u=d.users[i]
-      h+='<tr><td>'+u.id+'</td><td>'+esc(u.nickname)+'</td><td>'+(u.phone||'-')+'</td><td>'+(u.role==='vip'?'VIP':'普通')+'</td><td>'
+      h+='<tr><td>'+u.id+'</td><td>'+esc(u.nickname)+'</td><td>'+(u.phone||'-')+'</td><td>'+(u.role==='vip'?'VIP':'普通')+'</td><td style=font-size:12px;color:#999>'+(u.vip_expires_at?u.vip_expires_at.substring(0,10):'-')+'</td><td>'
       h+='<span class=btn onclick="viewU('+u.id+')">详情</span> <span class="btn btn-pri" onclick="editU('+u.id+')">编辑</span> '
       h+='<span class=btn onclick="vipU('+u.id+')">VIP</span> <span class="btn btn-dgr" onclick="delU('+u.id+')">删除</span></td></tr>'}
     h+='</table>';E('usrTable').innerHTML=h||'<div class=emp>暂无用户</div>'
@@ -162,7 +162,7 @@ function vipU(uid){
   api('GET','/users/'+uid,null,function(u){
     var d=prompt('VIP天数 (0=取消, -1=永久):',u.role==='vip'?'30':'30')
     if(d===null)return;d=parseInt(d)
-    api('PUT','/users/'+uid,{role:d<=0?'user':'vip',vip_days:d>0?d:36500},function(){loadU()})
+    api('PUT','/users/'+uid,{role:d<0?'vip':d>0?'vip':'user',vip_days:d>0?d:d<0?36500:0},function(){loadU();alert('已更新，刷新查看')})
   })
 }
 function delU(uid){if(confirm('确定删除？'))api('DELETE','/users/'+uid,null,loadU)}
@@ -201,7 +201,12 @@ function showM(cid){C=cid;E('pnDetail').classList.add('hidden');E('pnMsgs').clas
     if(!msgs||!msgs.length){E('msgList').innerHTML='<div class=emp>暂无消息</div>';return}
     var h=''
     for(var i=0;i<msgs.length;i++){var m=msgs[i],cls=m.role==='user'?'bub-user':'bub-ai'
-      h+='<div style=display:flex;flex-direction:column><div class="'+cls+'">'+(m.role==='user'?'<span class="tag tg-user">用户</span>':'<span class="tag tg-ai">AI</span>')+(m.content||'')+'<div style=font-size:10px;color:#aaa;margin-top:3px>'+((m.time||'').substring(0,19))+'</div></div></div>'}
+      var body=''
+      var c=m.content||''
+      var isImg=/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i.test(c)||c.indexOf('/receive/')>=0&&/\.(jpg|jpeg|png|gif|webp|svg)/i.test(c)
+      if(isImg){body='<a href="'+c+'" target=_blank><img src="'+c+'" style=max-width:200px;max-height:150px;border-radius:6px;display:block></a>'}
+      else{body=(m.role==='user'?'<span class="tag tg-user">用户</span>':'<span class="tag tg-ai">AI</span>')+c}
+      h+='<div style=display:flex;flex-direction:column><div class="'+cls+'">'+body+'<div style=font-size:10px;color:#aaa;margin-top:3px>'+((m.time||'').substring(0,19))+'</div></div></div>'}
     E('msgList').innerHTML=h
   })
 }
