@@ -119,6 +119,13 @@ async def update_user(uid: int, req: UserUpdate, authorization: str = Header(Non
     if req.nickname is not None: kw["nickname"] = req.nickname
     if req.avatar_url is not None: kw["avatar_url"] = req.avatar_url
     if req.phone is not None: kw["phone"] = req.phone
+    if req.role is not None and req.role in ("user", "vip"):
+        kw["role"] = req.role
+        if req.vip_days and req.vip_days > 0:
+            from datetime import datetime, timedelta
+            kw["vip_expires_at"] = (datetime.now() + timedelta(days=req.vip_days)).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            kw["vip_expires_at"] = None
     if not kw:
         raise HTTPException(400, "\u65e0\u66f4\u65b0\u5b57\u6bb5")
     update(uid, **kw)

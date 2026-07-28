@@ -200,6 +200,10 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
         existing_msgs = msg_db.get_history(cid, limit=1)
 
     msg_db.save(cid, "user", req.message)
+    from app.utils.usage import track, check as _uc
+    if not _uc(user, "chat"):
+        raise HTTPException(429, "今日对话次数已用完")
+    track(user["id"], "chat")
     if not is_new and not existing_msgs:
         is_new = True  # pre-created conversation, first message
     processed = await _resolve_file_message(req.message)
