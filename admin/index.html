@@ -54,7 +54,6 @@ td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
 <input type=password id=pwd placeholder="密码" autofocus>
 <button id=loginBtn>登录</button>
 </div>
-</div>
 <div class=page id=pgApp>
 <div class=row><h2>ZLWL 管理后台</h2><button id=logoutBtn>退出</button></div>
 <div class=stat-grid id=statsGrid>
@@ -77,12 +76,12 @@ td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
 <span class="tab act" data-tab=convs>对话</span>
 <span class=tab data-tab=assess>评测</span>
 <span class=tab data-tab=mems>记忆</span>
-<span class=tab data-tab=files>文件</span>
+<span class=tab data-tab=files>文件</span><span class=tab data-tab=usage>用量</span>
 </div>
 <div id=tConvs></div>
 <div id=tAssess class=hidden></div>
 <div id=tMems class=hidden></div>
-<div id=tFiles class=hidden></div></div>
+<div id=tFiles class=hidden></div><div id=tUsage class=hidden></div></div>
 <div class="card hidden" id=pnMsgs>
 <span id=backBtn2 class=back>← 返回</span>
 <div class=row><h3 id=msgTitle></h3><button id=delConvBtn class="btn btn-dgr">删除</button></div>
@@ -163,7 +162,7 @@ function refreshUsers(){
     var users=d.users||[]
     for(var i=0;i<users.length;i++){var u=users[i]
       h+='<tr><td>'+u.id+'</td><td>'+(u.nickname||'-')+'</td><td>'+(u.phone||'-')+'</td>'
-      h+='<td><span class=btn onclick="viewU('+u.id+')">详情</span> <span class="btn btn-pri" onclick="editU('+u.id+')">编辑</span> <span class="btn btn-dgr" onclick="delU('+u.id+')">删除</span></td></tr>'}
+      h+='<td><span class=btn onclick="viewU('+u.id+')">详情</span> <span class="btn btn-pri" onclick="editU('+u.id+')">编辑</span> <span class="btn btn-dgr" onclick="delU('+u.id+')">删除</span> <span class="btn" onclick="vipUser('+u.id+')">VIP</span></td></tr>'}
     h+='</table>'
     E('usrTable').innerHTML=h||'<div class=emp>暂无用户</div>'
   })
@@ -186,6 +185,7 @@ E('tabBar').onclick=function(e){
   else if(t==='assess')loadAssess()
   else if(t==='mems')loadMems()
   else if(t==='files')loadFiles()
+  else if(tab==='usage')loadUsageTab()
 }
 
 function loadConvs(){
@@ -272,10 +272,27 @@ function vipUser(uid){
     api('PUT','/users/'+uid,{role:days<=0?'user':'vip',vip_days:days>0?days:36500},function(){alert('已更新');refreshUsers()})
   })
 }
+function loadUsageTab(){
+  E('tUsage').innerHTML='<div class=emp>加载中...</div>'
+  api('GET','/users/'+U+'/usage?days=7',null,function(d){
+    if(!d||!d.length){E('tUsage').innerHTML='<div class=emp>暂无用量</div>';return}
+    var h='<table><tr><th>项目</th><th>近7天</th></tr>'
+    var ls={chat:'AI对话',voice_assess:'语音评测',speak:'口语对练',upload:'文件上传'}
+    for(var i=0;i<d.length;i++){var r=d[i];h+='<tr><td>'+(ls[r.metric]||r.metric)+'</td><td><strong>'+r.total+'</strong> 次</td></tr>'}
+    h+='</table>';E('tUsage').innerHTML=h})
+}
+function loadUsage(uid){
+  api('GET','/users/'+uid+'/usage?days=7',null,function(d){
+    var h='';for(var i=0;i<(d||[]).length;i++){h+=d[i].metric+': '+d[i].total+'次 '}
+    alert('近7天用量:
+'+(h||'暂无数据'))
+  })
+}
 function delU(uid){if(confirm('确定删除？'))api('DELETE','/users/'+uid,null,refreshUsers)}
 
 // Init
 E('pgLogin').classList.add('visible')
 </script>
 </body>
+</html>
 </html>
