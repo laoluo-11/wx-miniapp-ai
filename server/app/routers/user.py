@@ -21,7 +21,7 @@ async def profile(req: UpdateReq, user: dict = Depends(current_user)):
     kw = {}
     if req.nickname is not None: kw["nickname"] = req.nickname
     if req.avatar_url is not None: kw["avatar_url"] = req.avatar_url
-    if not kw: raise HTTPException(400, "无更新字段")
+    if not kw: raise HTTPException(400, "no fields")
     update(user["id"], **kw)
     return {"msg": "ok"}
 
@@ -36,17 +36,55 @@ async def my_usage(user: dict = Depends(current_user)):
     }
 
 
-from pydantic import BaseModel
+# --- Phone binding (WeChat new code-based API) ---
+
+import httpx
+from app.config import WX_APPID, WX_SECRET
+
+class BindPhoneReq(BaseModel):
+    code: str | None = None
+    encrypted_data: str | None = None
+    iv: str | None = None
+
+async def _get_access_token() -> str:
+    """Get mini program access_token with simple in-memory cache"""
+    import time
+    if hasattr(_get_access_token, "_cache"):
+        tok, exp = _get_access_token._cache
+        if time.time() < exp - 60:
+            return tok
+
+    url = "https://api.weixin.qq.com/cgi-bin/token"
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get(url, params={
+            "grant_type": "client_credential",
+            "appid": WX_APPID,
+            "secret": WX_SECRET
+        })
+        data = r.json()
+        if "access_token" in data:
+            _get_access_token._cache = (data["access_token"], time.time() + data.get("expires_in", 7200))
+            return data["access_token"]
+        raise Exception(f"get access_token failed: {data}")
+
+async def _get_phone_by_code(code: str) -> str | None:
+    """New API: exchange code for phone number"""
+    token = await _get_access_token()
+    url = "https://api.weixin.qq.com/wxa/business/getuserphonenumber"
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.post(url, params={"access_token": token}, json={"code": code})
+        data = r.json()
+        if data.get("errcode") == 0:
+            return data["phone_info"]["phoneNumber"]
+        print(f"[Phone] getuserphonenumber failed: {data}")
+        return None
+
+# Old AES decrypt (fallback)
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 import base64 as _b64
 
-class BindPhoneReq(BaseModel):
-    encrypted_data: str
-    iv: str
-
 def _decrypt_phone(session_key: str, encrypted_data: str, iv: str) -> str:
-    """解密微信加密的手机号"""
     key = _b64.b64decode(session_key)
     iv_bytes = _b64.b64decode(iv)
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv_bytes))
@@ -60,22 +98,27 @@ def _decrypt_phone(session_key: str, encrypted_data: str, iv: str) -> str:
 
 @router.post("/bind-phone")
 async def bind_phone(req: BindPhoneReq, user: dict = Depends(current_user)):
-    """绑定手机号（解密微信 getPhoneNumber 数据）"""
+    """Bind phone (new code API, fallback old encrypted_data)"""
     try:
-        phone = _decrypt_phone(user["session_key"], req.encrypted_data, req.iv)
+        if req.code:
+            phone = await _get_phone_by_code(req.code)
+        elif req.encrypted_data:
+            phone = _decrypt_phone(user["session_key"], req.encrypted_data, req.iv)
+        else:
+            raise HTTPException(400, "missing code or encrypted_data")
+
         if not phone:
-            raise HTTPException(400, "解密失败")
-        # 检查手机号是否已被其他账号绑定
+            raise HTTPException(400, "failed to get phone number")
+
         from app.database import get_db
         with get_db() as db:
             cur = db.cursor()
             cur.execute("SELECT id FROM wx_users WHERE phone = %s AND id != %s", (phone, user["id"]))
             if cur.fetchone():
-                raise HTTPException(400, "该手机号已被其他账号绑定")
+                raise HTTPException(400, "phone already bound to another account")
         update(user["id"], phone=phone)
         return {"msg": "ok", "phone": phone}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(400, f"手机号绑定失败: {str(e)[:100]}")
-
+        raise HTTPException(400, f"phone bind failed: {str(e)[:100]}")

@@ -502,3 +502,17 @@ mysql -S /tmp/mysql.sock -u root -p
 
 - AI 生成图片未写入 user_files 表 → 管理后台「用户-文件」看不到
 - 管理后台删文件只删 DB 不删磁盘 (static/ 前缀文件) → 已修复 _cleanup_file
+
+
+---
+
+## 2026-07-28 审核合规 + 手机号绑定升级
+
+### 手机号绑定升级为微信新版 API
+- 旧版 AES 解密方式已弃用，改用 code 换取手机号
+- 新增 `_get_access_token()` 和 `_get_phone_by_code()` 
+- 向后兼容旧版 encrypted_data 方式
+
+### AI 角色预设
+- 更新 `DIAGRAM_SYSTEM_PROMPT`，添加身份设定和自我介绍规范
+- 禁止 AI 提及 OpenClaw、DeepSeek 等底层技术信息
