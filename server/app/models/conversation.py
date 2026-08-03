@@ -1,6 +1,9 @@
 from app.database import get_db
+from datetime import datetime
 
-def create(uid: int, title: str = "新的对话") -> int:
+def create(uid: int, title: str = None) -> int:
+    if title is None:
+        title = datetime.now().strftime("%m月%d日 %H:%M")
     with get_db() as db:
         cur = db.cursor()
         cur.execute("INSERT INTO conversations (user_id, title) VALUES (%s, %s)", (uid, title))
@@ -33,5 +36,16 @@ def touch(cid: int):
 def delete(cid: int, uid: int) -> bool:
     with get_db() as db:
         cur = db.cursor()
+        # 先获取该会话所有消息内容用于清理文件
+        cur.execute("SELECT content FROM messages WHERE conversation_id = %s", (cid,))
+        contents = [row['content'] for row in cur.fetchall()]
+        # 删除消息和会话
+        cur.execute("DELETE FROM messages WHERE conversation_id = %s", (cid,))
         cur.execute("DELETE FROM conversations WHERE id = %s AND user_id = %s", (cid, uid))
+        # 清理关联文件
+        from app.models.message import _cleanup_static_files
+        _cleanup_static_files(contents)
+        # 清理用户上传文件
+        from app.models.file import delete_by_conversation
+        delete_by_conversation(cid)
         return cur.rowcount > 0

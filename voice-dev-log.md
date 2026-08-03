@@ -7,7 +7,7 @@
 - 讯飞 ISE API：评测引擎 en_vip，题型 read_sentence
 - 传输协议：WebSocket 流式（wss://ise-api.xfyun.cn/v2/open-ise）
 - 音频规格：16kHz 采样率、16bit 位深、单声道、PCM raw
-- 服务端：FastAPI + websockets，部署于 117.69.252.58:8080
+- 服务端：FastAPI + websockets，部署于 47.116.193.74:8000
 - 前端：微信小程序原生框架，wx.request + base64 传输音频
 - 域名：https://luois-james.xyz（Cloudflare Tunnel 代理）
 
@@ -318,9 +318,9 @@ xml = asyncio.run(ise_assess(
 ```
 
 ## 部署命令
-  cd /home/dfzz/wx-miniapp-ai/server
-  nohup python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8080 > logs/uvicorn.log 2>&1 &
-  curl http://127.0.0.1:8080/health
+  cd /opt/wx-miniapp-ai/server
+  nohup python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > logs/uvicorn.log 2>&1 &
+  curl http://127.0.0.1:8000/health
 
 ## 当前状态
 - 讯飞 ISE 协议完全跑通，评测结果正常返回
@@ -418,3 +418,285 @@ xml = asyncio.run(ise_assess(
 ### 提交记录
 - 后端 GitHub: `11f53eb` — 服务器适配 + 文件AI解析 + 记忆管理 (8 files)
 - 前端 微信 git: `1c7fae9` — 逐词着色 + 文件显示 + 配置更新
+
+
+---
+
+## 2026-07-21 后续工作记录
+
+### 一、服务器迁移与 Cloudflare Tunnel
+
+**问题**：新服务器（阿里云 ECS 47.116.193.74）未备案，阿里云拦截 HTTP 流量返回 ICP 备案页。
+
+**解决**：
+- 从旧服务器（117.69.252.58）复制 cloudflared 二进制和 cert.pem
+- 修改 config.yml 将 ingress 指向 `http://127.0.0.1:8000`
+- 创建 systemd 服务（`/etc/systemd/system/cloudflared.service`）
+- DNS 改为 CNAME → `626935f4-...cfargotunnel.com`（橙色代理）
+- SSL/TLS 设为 Full 模式
+- 停用 Nginx，tunnel 直连 uvicorn
+
+**架构**：
+```
+用户 → Cloudflare CDN → Tunnel → 47.116.193.74:8000 (uvicorn)
+                                  ↑ cloudflared systemd 自启
+```
+
+### 二、真流式输出
+
+**问题**：后端 `/send` 用 `await llm_chat()` 等完整回复后一次性返回，前端虽支持 SSE 但实际不是流式。
+
+**解决**：
+- `llm_client.py` 新增 `_call_llm_stream()`：调用 DeepSeek/OpenClaw 时加 `stream: true`，逐 token 解析 SSE 事件并 `yield`
+- `llm_client.py` 新增 `chat_stream()`：注入记忆上下文后调用流式函数
+- `chat.py` `/send` 用 `StreamingResponse(generate())` 逐 token 推送到前端
+- 末尾附带 `__META__` JSON 元数据（conversation_id、title）
+- `chat.js` 适配：`onText` 过滤 `__META__` 显示纯文本，`.then()` 解析元数据
+
+**效果**：前端逐字实时渲染，不再等完整回复。
+
+### 三、Markdown 渲染
+
+**问题**：AI 回复的 `**加粗**`、`
+
+` 换行、列表等在前端当纯文本显示。
+
+**解决**：
+- 新建 `utils/markdown.js` — 正则转换器，支持：加粗、斜体、标题（#/##/###）、列表（-/1.）、分割线、行内代码、代码块、表格、引用块
+- `message-bubble.wxml`：AI 消息改用 `<rich-text nodes="{{mdHtml}}">`
+- `message-bubble.js`：`content` observer 自动解析，流式时 80ms 节流
+- 代码块：黑底绿字配色（`#2d2d2d` 背景）
+- 表格：完整的 `<table>/<tr>/<th>/<td>` 渲染
+
+### 四、消息操作按钮
+
+AI 气泡下方加 **📋 复制** / **↗️ 分享**，用户气泡下方加 **✏️ 编辑**。
+
+- `message-bubble.wxml`：非流式、非失败、非图片/文件时显示按钮行
+- `message-bubble.js`：`onCopy`/`onShare` 调 `wx.setClipboardData`
+- `onEdit` → `triggerEvent('edit')` → `chat.js onEditMessage` → 回填输入框
+- `chat-input.js` 新增 `editText` property observer，接收外部文字
+
+### 五、批量删除消息
+
+**问题**：长按消息弹 actionSheet 只能单条删除。
+
+**解决**：
+- **后端**：`message.py` 新增 `delete_by_ids(cid, ids)` → `DELETE FROM messages WHERE id IN (...)`
+- **后端**：`chat.py` 新增 `DELETE /conversations/{cid}/messages` 接口
+- **前端**：长按进入选择模式 → 点击气泡勾选 → 底部栏显示 `已选 N 条` → `取消` / `🗑 删除`
+- `message-bubble.wxml`：选择模式下显示圆形 checkbox
+- 删除时前端先移除 → 后端同步删除
+
+### 六、会话重命名/删除同步
+
+**问题**：重命名是乐观更新（先改 UI 再调后端），失败时 UI 不一致且静默吞错。
+
+**解决**：
+- 重命名：`PUT /conversations/{id}` 后端确认后 → 更新列表，失败 Toast 提示
+- 删除会话：DB CASCADE 自动删关联消息，`.catch` 改为 Toast 而非静默吞错
+
+### 七、个人中心增强
+
+新增四个模块：
+
+| 模块 | 后端 | 前端 |
+|------|------|------|
+| 📊 统计卡片 | `GET /api/v1/chat/stats`（对话数/消息数/评测数） | `profile.wxml` 三列数字卡片 |
+| 🎯 评测记录 | `voice_assessments` 表 + `GET /voice/history` | 可展开面板，分数/文本/四维度 |
+| 🧠 AI 记忆 | `GET/POST/DELETE /chat/memories`（已有接口） | 可展开面板，逐条显示 + ×删除 |
+| ℹ️ 关于 | - | `wx.showModal` 弹版本号 |
+
+**Bug**：stats 接口返回 500 → `stats.py` 函数名 `get_user_stats` 与 router 调用的 `user_stats` 不匹配，修复后正常。
+
+### 八、头像上传与展示
+
+**问题**：`wx.chooseAvatar` 返回临时 `wxfile://` 路径，存到 DB 后过期无法显示。
+
+**解决**：
+- `profile.js` `saveProfile()`：先 `wx.uploadFile` 上传头像到服务器 → 拿到永久 URL → 再 `PUT /user/profile` 存入 DB
+- `chat.js` `loadUserAvatar()`：从 `globalData.userInfo.avatarUrl` 读取
+- `message-bubble.wxml`：用户头像有 URL 用 `<image>`，无则默认 😀
+- CSS：`avatar-user` 加 `overflow:hidden`，`avatar-img` 圆形裁切
+
+### 九、视觉模型图片识别
+
+**问题**：用户发图片后 AI 说"无法查看"。
+
+**解决**：
+- `llm_client.py` 新增 `_has_image()` / `_describe_images()` / `_vision_call()`
+- 通过 OpenRouter 调用 `qwen/qwen3-vl-235b-a22b-instruct` 视觉模型
+- `chat()` / `chat_stream()` 自动检测 `image_url` 类型消息并预处理
+- `chat.py` `_resolve_file_message()`：检测到图片 URL → `await _vision_call(url)` 获取描述 → 嵌入 prompt
+- 配置：`.env` 中 `OPENROUTER_KEY` + `VISION_MODEL=qwen/qwen3-vl-235b-a22b-instruct`
+
+**Bug**：视觉模型 18 秒响应，前端 60 秒超时足够。但 `kill -HUP` 无法热重载 uvicorn，需 `kill -9` + 重启。
+
+### 十、图片历史记录类型检测
+
+**问题**：上传的图片在聊天记录中显示为一串 URL 文本而非图片。
+
+**解决**：`chat.js` 新增 `detectMessageType(content)` 函数，加载历史消息时自动检测：
+- `https://luois-james.xyz/static/xxx.jpg` → `type: 'image'` → 气泡显示图片
+- `https://luois-james.xyz/static/xxx.pdf` → `type: 'file'` → 气泡显示文件卡片
+- 其他 → 纯文本
+
+### 十一、清理聊天双重确认
+
+**问题**：清除所有聊天记录只需点一次确认，容易误操作。
+
+**解决**：两步确认：
+1. 弹窗 "⚠️ 此操作不可恢复" → 点"继续"
+2. 弹窗输入框 → 输入"确认删除"四个字 → 不匹配则取消
+
+### 当前技术栈全景
+
+```
+前端：微信原生小程序（wx.request/uploadFile/rich-text）
+后端：FastAPI + uvicorn + MariaDB
+AI：OpenClaw Gateway → DeepSeek（流式）
+视觉：OpenRouter → qwen3-vl
+语音评测：讯飞 ISE WebSocket API
+语音对话：Qwen3.5-Omni-Flash（音频→文本）+ Qwen3-TTS-Flash（文本→语音）
+传输：Cloudflare Tunnel（绕过 ICP 备案）
+代码：GitHub byOpenClaw 分支 + 微信 git Test 分支
+```
+
+
+---
+
+## 2026-07-22 工作记录
+
+### 口语对练（Qwen-Omni 多模态）
+
+#### 概述
+集成阿里云 DashScope 的 Qwen-Omni 多模态模型，实现微信小程序内的实时语音对话功能。
+用户录音 → 服务端语音识别 → LLM 对话 → TTS 合成 → 前端播放，形成完整的语音交互闭环。
+
+#### 技术选型
+
+| 能力 | 模型 | 说明 |
+|------|------|------|
+| 语音识别（ASR） | **Qwen3.5-Omni-Flash** | 多模态模型，支持音频输入 → 文本输出 |
+| 语音合成（TTS） | **Qwen3-TTS-Flash** | 文本转语音，支持多种音色和语速控制 |
+| LLM 对话 | DeepSeek（通过 OpenClaw Gateway） | 流式文本对话 |
+
+#### 为什么选择 HTTP 模式而非 WebSocket Realtime
+
+DashScope 提供两种 Qwen-Omni 接入方式：
+1. **WebSocket Realtime API** — 低延迟双向流式，但协议复杂，需管理连接生命周期
+2. **HTTP REST API** — 请求-响应模式，简单可靠
+
+**选择 HTTP 的原因**：
+- 微信小程序端网络环境不稳定，WebSocket 长连接容易断开
+- HTTP 模式更易调试和错误处理
+- 延迟差异在小程序场景下可接受（HTTP 往返 ~1-2s vs WebSocket ~0.5s）
+- 无需处理复杂的 WebSocket 重连逻辑
+- Dashboard 的 HTTP API 已足够稳定，支持流式响应
+
+#### 语音识别（Qwen3.5-Omni-Flash）
+
+**调用方式**：HTTP POST multipart/form-data 上传音频文件
+
+```
+POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+Authorization: Bearer <DASHSCOPE_API_KEY>
+Content-Type: multipart/form-data
+
+- model: qwen3.5-omni-flash
+- messages: [{"role": "user", "content": [{"type": "audio", "audio": <audio_file>}]}]
+```
+
+**处理流程**：
+1. 前端录音（16kHz, 16bit, mono PCM）
+2. 上传到后端 /speak/asr 接口
+3. 后端调用 Qwen-Omni，传入 "请将这段音频转写为文字，只输出文本"
+4. 返回识别文本，同时将该文本作为用户消息发给 LLM 对话
+5. LLM 流式返回回复文本
+6. 文本通过 TTS 合成语音返回前端
+
+#### 语音合成（Qwen3-TTS-Flash）
+
+**调用方式**：HTTP POST JSON
+
+```
+POST https://dashscope.aliyuncs.com/api/v1/services/aigc/text-to-speech/speech-synthesis
+Authorization: Bearer <DASHSCOPE_API_KEY>
+
+{
+  "model": "qwen3-tts-flash",
+  "input": {"text": "<要合成的文本>"},
+  "parameters": {
+    "voice": "Cherry",
+    "speech_rate": 1.0
+  }
+}
+```
+
+**音色选择**：
+
+| 音色 | 语言 | 风格 | 适用场景 |
+|------|------|------|----------|
+| Cherry | 中英 | 温柔知性女声 | 通用对话 |
+| Kai | 中英 | 沉稳自然男声 | 对话/朗读 |
+| Eric | 中英 | 自信有力男声 | 教学/演示 |
+
+**语速控制**：支持 0.8x ~ 2.0x 范围调整
+- 0.8x：慢速，适合英语学习跟读
+- 1.0x：正常速度（默认）
+- 1.2x-1.5x：稍快，适合日常对话
+- 2.0x：快速，适合听力训练
+
+#### 核心文件
+
+| 文件 | 作用 |
+|------|------|
+| `app/utils/qwen_omni.py` | Qwen-Omni HTTP 客户端：ASR 识别、TTS 合成、音频格式处理 |
+| `app/routers/speak.py` | 口语对练接口：`/speak/asr`（语音识别+对话）、`/speak/tts`（纯合成） |
+| `pages/speak/` | 前端口语对练页面（speak.js/.wxml/.wxss） |
+| `pages/speak/speak.js` | 录音管理、音频上传、语音播放、对话状态管理 |
+| `pages/speak/speak.wxml` | UI：对话气泡、录音按钮、播放控件 |
+| `pages/speak/speak.wxss` | 样式：聊天气泡、录音动画、播放指示器 |
+
+#### 接口设计
+
+**POST /speak/asr** — 语音识别 + 对话
+- 输入：`audio`（multipart 音频文件）
+- 输出：`{text, reply, audio}` — 识别文本 + LLM 回复文本 + TTS 音频 URL
+- 流程：ASR → LLM 对话 → TTS 合成，三阶段流水线
+
+**POST /speak/tts** — 纯文本转语音
+- 输入：`{text, voice?, speed?}`
+- 输出：`{audio_url}` — 合成的语音文件 URL
+
+#### 音频处理
+
+- 前端录音格式：MP3 或 WAV（微信原生录音）
+- 后端自动转换为 Qwen-Omni 要求的格式（16kHz, mono）
+- TTS 返回的音频缓存在服务器 static/tts/ 目录，定期清理
+
+#### 关键技术问题及解决
+
+**1. 音频格式兼容**
+- 问题：微信录音为 MP3 格式，Qwen-Omni 要求 PCM/WAV
+- 解决：后端使用 pydub + ffmpeg 将 MP3 转 PCM，统一 16kHz 单声道
+
+**2. 前后端音频传输**
+- 问题：微信小程序 wx.uploadFile 不支持 ArrayBuffer
+- 解决：录音后通过 wx.getFileSystemManager 读为临时文件，直接 uploadFile 上传
+
+**3. TTS 延迟优化**
+- 问题：完整合成再返回导致等待时间长
+- 解决：采用流式方案，LLM 逐句输出 → 立即 TTS 合成 → 边合成边返回音频片段
+
+**4. 对话上下文管理**
+- 问题：语音对话需要保持多轮上下文
+- 解决：speak 接口复用 chat 模块的对话管理，自动关联 conversation_id
+
+### 服务器迁移收尾
+
+- Cloudflare Tunnel 稳定运行，systemd 开机自启验证通过
+- 代码路径统一为 `/opt/wx-miniapp-ai`
+- uvicorn 端口统一为 `8000`
+- git 仓库配置完成，支持 push/pull
+- 旧服务器（117.69.252.58）已停用，所有服务迁移至 47.116.193.74

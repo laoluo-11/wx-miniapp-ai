@@ -12,16 +12,15 @@ def get_history(cid: int, before: int = None, limit: int = 40) -> list:
     with get_db() as db:
         cur = db.cursor()
         if before:
-            # before 是前端传的毫秒时间戳
             before_dt = datetime.fromtimestamp(before / 1000)
-            cur.execute("""SELECT role, content, created_at FROM messages
+            cur.execute("""SELECT id, role, content, created_at FROM messages
                            WHERE conversation_id = %s AND created_at < %s
                            ORDER BY id DESC LIMIT %s""", (cid, before_dt, limit))
         else:
-            cur.execute("""SELECT role, content, created_at FROM messages
+            cur.execute("""SELECT id, role, content, created_at FROM messages
                            WHERE conversation_id = %s
                            ORDER BY id DESC LIMIT %s""", (cid, limit))
-        rows = cur.fetchall()
+        rows = list(cur.fetchall())
         rows.reverse()
         return rows
 
@@ -31,7 +30,129 @@ def get_recent_pairs(cid: int, rounds: int = 10) -> list:
         cur.execute("""SELECT role, content FROM messages
                        WHERE conversation_id = %s ORDER BY id DESC LIMIT %s""",
                     (cid, rounds * 2))
-        rows = cur.fetchall()
+        rows = list(cur.fetchall())
         rows.reverse()
         return rows
+import os as _os
 
+_STATIC_PREFIX = "https://yyzhilingweilai.com/static/"
+_RECEIVE_PREFIX = "https://yyzhilingweilai.com/receive/"
+_OLD_RECEIVE_PREFIX = "https://luois-james.xyz/receive/"
+_OLD_STATIC_PREFIX = "https://luois-james.xyz/static/"
+_RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
+_UPLOAD_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads")
+
+
+def _cleanup_static_files(contents: list):
+    """Clean up static files including receive/ uploads."""
+    import re as _re
+    prefixes = [
+        (_STATIC_PREFIX, _UPLOAD_DIR),
+        (_RECEIVE_PREFIX, _RECEIVE_DIR),
+        (_OLD_STATIC_PREFIX, _UPLOAD_DIR),
+        (_OLD_RECEIVE_PREFIX, _RECEIVE_DIR),
+    ]
+    all_urls = []
+    for ct in contents:
+        if not ct or not isinstance(ct, str):
+            continue
+        for prefix, base_dir in prefixes:
+            if ct.startswith(prefix):
+                all_urls.append((ct, prefix, base_dir))
+            escaped = _re.escape(prefix)
+            md_re = _re.compile(r'\!\[.*?\]\(' + '(' + escaped + r'[^)]+' + ')' + r'\)')
+            for m in md_re.finditer(ct):
+                all_urls.append((m.group(1), prefix, base_dir))
+    seen = set()
+    for url, prefix, base_dir in all_urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        filename = url[len(prefix):]
+        filepath = _os.path.join(base_dir, filename)
+        if _os.path.exists(filepath):
+            try:
+                _os.remove(filepath)
+                print(f"[Cleanup] Deleted: {filepath}")
+            except Exception as e:
+                print(f"[Cleanup] Failed to delete {filepath}: {e}")
+
+
+
+
+def _cleanup_latex_cache(contents: list):
+    latex_dir = "/opt/wx-miniapp-ai/uploads/latex"
+    if not _os.path.exists(latex_dir):
+        return
+    tex_re = re.compile(r'\$\$\$|\$')
+    for ct in contents:
+        if not ct or not isinstance(ct, str):
+            continue
+        for m in tex_re.finditer(ct):
+            formula = m.group(1) or m.group(2)
+            if not formula or len(formula) < 2:
+                continue
+            try:
+                encoded = quote(formula, safe='')
+                key = hashlib.md5(encoded.encode()).hexdigest()
+                path = _os.path.join(latex_dir, f"{key}.svg")
+                if _os.path.exists(path):
+                    _os.remove(path)
+                    print(f"[Cleanup] Deleted LaTeX: {path}")
+            except Exception:
+                pass
+
+
+def _cleanup_latex_cache(contents: list):
+    latex_dir = "/opt/wx-miniapp-ai/uploads/latex"
+    if not _os.path.exists(latex_dir):
+        return
+    tex_re = re.compile(r'\$\$(.+?)\$\$|\$(.+?)\$')
+    for ct in contents:
+        if not ct or not isinstance(ct, str):
+            continue
+        for m in tex_re.finditer(ct):
+            formula = m.group(1) or m.group(2)
+            if not formula or len(formula) < 2:
+                continue
+            try:
+                encoded = quote(formula, safe='')
+                key = hashlib.md5(encoded.encode()).hexdigest()
+                path = _os.path.join(latex_dir, f"{key}.svg")
+                if _os.path.exists(path):
+                    _os.remove(path)
+                    print(f"[Cleanup] Deleted LaTeX: {path}")
+            except Exception:
+                pass
+
+def delete_by_ids(cid: int, ids: list) -> int:
+    """批量删除消息，返回删除条数。同时清理关联的静态文件。"""
+    if not ids:
+        return 0
+    with get_db() as db:
+        cur = db.cursor()
+        # 先查内容以便清理文件
+        placeholders = ','.join(['%s'] * len(ids))
+        cur.execute(
+            f"SELECT content FROM messages WHERE conversation_id = %s AND id IN ({placeholders})",
+            [cid] + ids
+        )
+        contents = [row['content'] for row in cur.fetchall()]
+        # 删除记录
+        cur.execute(
+            f"DELETE FROM messages WHERE conversation_id = %s AND id IN ({placeholders})",
+            [cid] + ids
+        )
+        # 清理关联的静态文件
+        _cleanup_static_files(contents)
+        # 清理 user_files 表中的 receive 文件记录
+        for ct in contents:
+            if ct and isinstance(ct, str) and (ct.startswith(_RECEIVE_PREFIX) or ct.startswith(_OLD_RECEIVE_PREFIX)):
+                try:
+                    cur.execute(
+                        "DELETE FROM user_files WHERE file_url = %s",
+                        (ct,)
+                    )
+                except Exception:
+                    pass
+        return cur.rowcount

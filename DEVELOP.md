@@ -1,10 +1,10 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-07-21
+> 最后更新：2026-07-27
 
 ## 项目概述
 
-ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
 ## 系统架构
 
@@ -31,6 +31,37 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
                     │                 │
                     │  MariaDB (3306) │
                     └─────────────────┘
+```
+
+### 图表生成流程
+
+```
+用户消息
+    │
+    └── LLM (chat.py)
+            │
+            ├── 识别图表意图
+            │       └── diagram_prompt.py 生成结构化提示词
+            │
+            └── 输出标记格式
+                    ├── [SVG:...] → svg_render.py → .svg 文件 → markdown 内嵌
+                    └── [IMAGE:prompt] → image_gen.py → PNG
+                            │
+                            └── 图片持久化到 DB / static/
+                                    │
+                                    └── 返回图片 URL 给前端
+```
+
+### 语音聊天流程
+
+```
+小程序录音
+    │
+    └── WebSocket /api/v1/voice/chat
+            │
+            ├── 接收音频帧 → 讯飞语音识别 (ASR)
+            ├── 识别文本 → LLM 生成回复
+            └── LLM 回复 → 讯飞语音合成 (TTS) → 音频帧返回
 ```
 
 ## 服务器
@@ -67,7 +98,11 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 │   │       ├── llm_client.py   # LLM 调用（OpenClaw/DeepSeek）
 │   │       ├── memory_manager.py # 用户记忆管理
 │   │       ├── wx_api.py       # 微信 code2session
-│   │       └── xf_ise.py       # 讯飞 ISE WebSocket 客户端
+│   │       ├── xf_ise.py       # 讯飞 ISE WebSocket 客户端
+│   │       ├── svg_render.py   # SVG 纯文件保存
+│   │       ├── image_gen.py    # 图片生成（文生图）
+│   │       ├── diagram_prompt.py # 图表 LLM 提示词
+│   │       └── qwen_omni.py    # 通义千问 Omni 多模态
 │   ├── .env                    # 环境变量（密钥）
 │   ├── requirements.txt        # Python 依赖
 │   └── logs/uvicorn.log        # 运行日志
@@ -104,6 +139,8 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 | DELETE | /conversations/{id} | 删除对话 | Bearer |
 | POST | /upload | 上传文件（multipart） | Bearer |
 | GET | /static/{filename} | 访问上传的文件 | 否 |
+| GET | /stats | 对话统计（消息数/Token） | Bearer |
+| GET | /memories | 用户记忆列表 | Bearer |
 
 **聊天请求体**：
 ```json
@@ -125,6 +162,12 @@ ZLWL（智聆未来）是一个英语口语学习微信小程序，核心功能�
 |------|------|------|------|
 | GET | /text | 生成评测文本 | Bearer |
 | POST | /assess | 提交音频评测 | Bearer |
+
+### 语音聊天 `/api/v1/voice`
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| WS | /chat | 实时语音对话（WebSocket） | Bearer |
+| GET | /history | 语音评测历史记录 | Bearer |
 
 **评测请求体**：
 ```json
@@ -257,6 +300,7 @@ git 仓库：`https://git.weixin.qq.com/saitama/ZLWL-miniApp.git`，分支 `Test
 | chat-input | 输入框 + 发送照片/文件抽屉 |
 | message-bubble | 消息气泡（文本/图片/文件卡片） |
 | navigation-bar | 自定义导航栏 |
+| custom-tab-bar | 自定义底部导航栏 |
 
 ### 工具模块
 
@@ -338,6 +382,11 @@ SSL/TLS 模式：Full
 4. **逐词评分按分数着色**：ISE dp_message 固定为 0，改为 >=80绿/60-79黄/<60红 三档
 5. **记忆压缩**：超过 12 条活跃记忆时 LLM 自动压缩为摘要，控制在 800 字符预算内
 6. **ISE 协议不使用 ttp_skip**：该模式反复触发 48195，手动 TTP 帧可靠
+7. **LLM 驱动的图表生成**：聊天中 LLM 输出 SVG/IMAGE 标记，服务端解析后 SVG 嵌入 markdown 由 towxml 渲染，创意图片以独立气泡返回
+8. **SVG 纯文件保存**：svg_render.py 直接保存原始 SVG 文件，通过 towxml <image> 组件内嵌渲染，零失真无服务端开销
+9. **图片持久化到数据库**：创意图片存入 DB + static/ 目录；SVG 示意图仅嵌入 markdown 文本，不重复存 DB
+10. **qwen-image-max 图片生成**：image_gen.py 选用 Qwen Image Max 模型，中文渲染效果好
+11. **服务器字体**：已安装 Noto Sans CJK 等中文字体（SVG 由客户端渲染，字体不再关键）
 
 ## 维护命令
 
@@ -352,7 +401,12 @@ journalctl -u cloudflared -f
 
 # 重启服务
 kill -HUP $(pgrep -f "uvicorn app.main")
+pkill -f "uvicorn app.main" && cd /opt/wx-miniapp-ai/server && nohup python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > logs/uvicorn.log 2>&1 &
 systemctl restart cloudflared
+
+# 清理 Python 缓存
+find /opt/wx-miniapp-ai -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
+find /opt/wx-miniapp-ai -type f -name "*.pyc" -delete 2>/dev/null
 
 # Git 操作
 cd /opt/wx-miniapp-ai
@@ -362,3 +416,103 @@ git add -A && git commit -m "msg" && git push origin master
 # 数据库
 mysql -S /tmp/mysql.sock -u root -p
 ```
+
+---
+
+## 2026-07-27 更新
+
+### 域名迁移
+- 域名从 `luois-james.xyz` 迁移到 `yyzhilingweilai.com`
+- 安装了 Let's Encrypt SSL 证书，Nginx 配置 HTTPS
+- 后端所有硬编码 URL 全部更新，旧域名文件清理逻辑已兼容
+
+### 管理后台
+- 新增 `/admin` 管理后台页面（HTML5 SPA）
+- 支持用户 CRUD、对话查看、评测/记忆/文件管理
+- 管理 API 位于 `/api/v1/admin/*`，Token 有效期 8 小时
+- 管理员密码在 `server/.env` 的 `ADMIN_PASSWORD` 配置
+
+### 会话标题自动命名
+- 新会话默认显示创建时间戳
+- 第一条消息发送后，AI 根据对话内容自动生成标题（5-15 字）
+- 使用 DeepSeek 生成标题（不依赖 OpenClaw）
+
+### 手机号绑定
+- 新增 `POST /api/v1/user/bind-phone` 解密微信手机号
+- 一个手机号只能绑定一个账号
+
+### 语音测评
+- 前端新增"换一句"按钮，可重新生成评测文本
+
+### uvicorn 并发提升
+- Workers 从 2 提升到 4，并发能力翻倍
+
+---
+
+## 2026-07-28 更新 — 用户VIP系统 + 用量监控
+
+### 会员系统
+- `wx_users` 表新增 `role`（user/vip）和 `vip_expires_at` 字段
+- 管理后台支持设置 VIP 时长（天数 / -1永久 / 0取消）
+- 区分普通用户和会员的用量限额
+- 会员到期自动降级（auth 中间件检查）
+
+### 用量监控
+- 新增 `usage_stats` 表按天统计用量
+- 统一限额：chat:20/120, voice_assess:3/15, speak:20/120, upload:3/15
+- 各端点自动埋点追踪，超限返回 429
+- 前端个人中心用量进度条 + VIP 标识 + 到期时间
+- 管理后台用户详情增加「用量」标签页
+
+### 写入修复
+- 修复 chat.py `/send` 用量追踪代码未插入问题
+- 修复 admin.py VIP 更新代码未插入问题
+- 修复 admin 页面 `id^=t` 选择器误匹配 tabBar 导致标签页消失
+- 管理后台查看消息支持图片缩略图显示
+- 管理后台 JS 全面改用传统 for 循环，避免兼容性问题
+
+
+---
+
+## 2026-07-28 意图分类 + 图片路由优化
+
+### 意图分类器 (intent.py)
+
+在聊天流程前增加独立的意图判断步骤，将用户请求分为四类：
+
+| intent | 触发条件 | 处理方式 |
+|--------|----------|----------|
+| `image` | "画一匹马"等纯生图请求 | 跳过 LLM，直接千问 qwen-image-max 生图 |
+| `diagram` | 流程图/架构图/几何等配图需求 | LLM 回复文字 + SVG 示意图 |
+| `analyze` | 上传图片/文件要求分析 | LLM 分析文件内容 |
+| `text` | 普通问答/翻译/计算 | 纯文字 LLM 回复 |
+
+优点：
+- 纯生图请求从 ~10s 降至 ~2s
+- 纯文字聊天不再加载 diagram prompt，省 token
+- 分类失败自动降级为 text
+- 环境变量 `USE_INTENT_CLASSIFIER=true/false` 可随时回退
+
+涉及文件：
+- 新增 `server/app/utils/intent.py`
+- 修改 `server/app/config.py` — 新增开关
+- 修改 `server/app/routers/chat.py` — /send 和 /send-deep-stream 新增路由
+
+### Bugfix
+
+- AI 生成图片未写入 user_files 表 → 管理后台「用户-文件」看不到
+- 管理后台删文件只删 DB 不删磁盘 (static/ 前缀文件) → 已修复 _cleanup_file
+
+
+---
+
+## 2026-07-28 审核合规 + 手机号绑定升级
+
+### 手机号绑定升级为微信新版 API
+- 旧版 AES 解密方式已弃用，改用 code 换取手机号
+- 新增 `_get_access_token()` 和 `_get_phone_by_code()` 
+- 向后兼容旧版 encrypted_data 方式
+
+### AI 角色预设
+- 更新 `DIAGRAM_SYSTEM_PROMPT`，添加身份设定和自我介绍规范
+- 禁止 AI 提及 OpenClaw、DeepSeek 等底层技术信息
