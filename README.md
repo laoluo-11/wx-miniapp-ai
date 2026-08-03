@@ -1,7 +1,8 @@
-# ZLWL 智聆未来 - AI 伴学助手后端
+# ZLWL 智领未来 - AI 伴学助手后端
 
 > 全科 AI 伴学微信小程序后端服务
 > 技术栈：FastAPI + MariaDB + DeepSeek/OpenClaw + 讯飞 ISE + 千问
+> 前端仓库：[[https://git.weixin.qq.com/saitama/ZLWL-miniApp.git]]
 
 ## 项目简介
 
