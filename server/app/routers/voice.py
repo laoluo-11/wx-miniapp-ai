@@ -1,7 +1,7 @@
 """
 语音测评路由：生成评测文本 + 调用讯飞ISE评测
 """
-from fastapi import APIRouter, Query, Request, Depends
+from fastapi import APIRouter, Query, Request, Depends, HTTPException
 from pydantic import BaseModel
 from app.utils.xf_ise import assess as xf_assess
 from app.utils.qwen_omni import chat_with_audio, chat_text_only
@@ -192,3 +192,62 @@ async def assess_raw(request: Request, user: dict = Depends(current_user)):
                 {"name": "标准度", "score": 0},
             ],
         }
+
+# === TTS 语音播报 ===
+
+import hashlib, os as _os, re
+
+TTS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads", "tts")
+_os.makedirs(TTS_DIR, exist_ok=True)
+
+def _split_sentences(text: str, max_len: int = 200) -> list:
+    """Split text by sentences, merge short ones up to max_len chars"""
+    sent = re.findall(r'[^。！？.!?\n]+[。！？.!?\n]*', text.strip())
+    if not sent:
+        return [text.strip()]
+    out = []
+    buf = ""
+    for s in sent:
+        s = s.strip()
+        if not s:
+            continue
+        if len(buf) + len(s) <= max_len:
+            buf += s
+        else:
+            if buf:
+                out.append(buf)
+            buf = s
+    if buf:
+        out.append(buf)
+    return out
+
+
+async def _tts_one(text: str, voice: str = "ruoxi") -> str | None:
+    """合成一句话，返回本地静态 URL（Ali TTS 带缓存）"""
+    from app.utils.tts_ali import synthesize
+    return await synthesize(text, voice=voice)
+
+
+class TtsReq(BaseModel):
+    text: str
+    voice: str = "Cherry"  # Cherry / Kai / Eric
+
+@router.post("/tts")
+async def tts(req: TtsReq, user: dict = Depends(current_user)):
+    """AI 回复语音播报：分段合成，返回 URL 列表"""
+    if not req.text or not req.text.strip():
+        raise HTTPException(400, "文本为空")
+
+    sentences = _split_sentences(req.text.strip(), max_len=200)
+    segments = []
+
+    for s in sentences:
+        url = await _tts_one(s, req.voice)
+        if url:
+            segments.append({"text": s, "url": url})
+        # 单个句子失败不阻塞整体
+
+    if not segments:
+        raise HTTPException(500, "语音合成失败")
+
+    return {"segments": segments}

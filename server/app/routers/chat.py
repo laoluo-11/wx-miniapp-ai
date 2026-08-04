@@ -696,3 +696,20 @@ async def remove_memory(mid: int, user: dict = Depends(current_user)):
         raise HTTPException(404, "记忆不存在")
     delete_memory(mid)
     return {"msg": "ok"}
+
+@router.post("/asr")
+async def speech_to_text(file: UploadFile = File(...), user: dict = Depends(current_user)):
+    """语音转文字：阿里云 NLS 语音识别（比 Qwen-Omni 快 10 倍+）"""
+    from app.utils.asr_ali import recognize
+
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(400, "音频文件为空")
+    if len(audio_bytes) > 2 * 1024 * 1024:  # 2MB
+        raise HTTPException(400, "音频文件过大")
+
+    try:
+        text = await recognize(audio_bytes)
+        return {"text": text}
+    except Exception as e:
+        raise HTTPException(500, f"语音识别失败: {str(e)}")

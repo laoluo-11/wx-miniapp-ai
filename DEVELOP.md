@@ -516,3 +516,30 @@ mysql -S /tmp/mysql.sock -u root -p
 ### AI 角色预设
 - 更新 `DIAGRAM_SYSTEM_PROMPT`，添加身份设定和自我介绍规范
 - 禁止 AI 提及 OpenClaw、DeepSeek 等底层技术信息
+
+## 2026-08-04 语音播报 + ASR 语音转文字
+
+### 语音播报 (TTS)
+- 前端 AI 气泡新增 🔊 播报按钮，点击调 `/api/v1/voice/tts`（阿里云 NLS），分段播放
+- 导航栏新增 🔊/🔇 全局自动播放开关，开启后 AI 回复完自动播报
+- 开关状态持久化到 `wx.Storage`
+- 深度模式按钮从导航栏移至输入栏发送按钮旁，避免导航栏拥挤
+- 默认音色从 `xiaoyun` 换为 `ruoxi`（若溪，更自然）
+- TTS 缓存自动清理：超过 200 个文件或 7 天未访问自动删除，每小时扫描一次
+
+### 语音转文字 (ASR)
+- 新增 `/api/v1/chat/asr` 端点：长按输入框录音 → 上传 → 阿里云 NLS 识别 → 自动发送
+- 新增 `server/app/utils/asr_ali.py`，复用 tts_ali 的 token 管理
+- 比之前用 Qwen-Omni 方案快 10 倍+
+
+### 前端 UI 调整
+- 输入栏整体放大：按钮 60→72rpx，字号 28→30rpx，内边距增大
+- 键盘弹起仍正确抬升，不覆盖输入框
+
+涉及文件：
+- 新增 `server/app/utils/asr_ali.py`
+- 修改 `server/app/utils/tts_ali.py` — 缓存清理 + 默认音色
+- 修改 `server/app/routers/chat.py` — ASR 端点
+- 修改 `server/app/routers/voice.py` — 默认音色
+- 前端多项（见前端开发日志）
+
