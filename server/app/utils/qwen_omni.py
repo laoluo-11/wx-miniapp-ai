@@ -128,3 +128,37 @@ async def text_to_speech(text: str, voice: str = "Cherry", speed: float = 1.0) -
         data = r.json()
         audio = data.get("output", {}).get("audio", {})
         return audio.get("url", "") or audio.get("data", "")
+
+
+async def transcribe_audio(audio_data: bytes, language: str = "auto") -> str:
+    """语音转文字（ASR）。发送音频到 Qwen-Omni，只要求转写，不回复。"""
+    audio_b64 = base64.b64encode(audio_data).decode()
+
+    prompt = "请把这段语音转写成文字，只输出转写结果，不要任何解释或回复。"
+    if language == "en":
+        prompt = "Transcribe this audio to text. Output ONLY the transcription, no extra words."
+
+    content_parts = [
+        {"audio": f"data:;base64,{audio_b64}"},
+        {"text": prompt}
+    ]
+    messages = [{"role": "user", "content": content_parts}]
+
+    headers = {"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": QWEN_MODEL, "input": {"messages": messages}}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(QWEN_DASHSCOPE_URL, headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
+
+    choices = data.get("output", {}).get("choices", [])
+    text = ""
+    if choices:
+        content = choices[0].get("message", {}).get("content", "")
+        if isinstance(content, list):
+            for part in content:
+                text += part.get("text", "") if isinstance(part, dict) else str(part)
+        else:
+            text = str(content)
+    return text.strip()

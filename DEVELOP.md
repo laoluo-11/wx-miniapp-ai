@@ -543,3 +543,36 @@ mysql -S /tmp/mysql.sock -u root -p
 - 修改 `server/app/routers/voice.py` — 默认音色
 - 前端多项（见前端开发日志）
 
+
+
+## 2026-08-04 LaTeX 渲染升级 + 深度搜索修复 + 华为兼容
+
+### LaTeX 公式渲染：codecogs → 本地 MathJax 3
+- 原因：codecogs 海外服务从阿里云北京经常超时，首次公式渲染慢且不稳定
+- 新增 `latex_render.js`（MathJax 3 Node 脚本）+ `latex_server.js`（常驻 HTTP 服务，端口 9123）
+- 重写 `latex_proxy.py`：不再转发 codecogs，改调本地 MathJax
+- 效果：首次渲染从 ~400ms（spawn 子进程）降至 ~20ms（常驻服务），快了 20 倍
+- 公式统一黑底白字，深色主题友好
+- 启动方式：`cd /opt/wx-miniapp-ai/server && bash start_latex.sh`
+
+### 深度搜索修复
+- 问题：deep_agent.py 用 DuckDuckGo HTML 抓取做联网搜索，阿里云北京连不上
+- 修复：重写 `deep_agent.py`，改用 OpenRouter `deepseek/deepseek-chat:online`
+- DeepSeek 原生联网搜索，结果自动注入回复，带引用链接
+- 去掉了本地 DuckDuckGo + code_exec 工具循环，代码从 213 行精简到 ~70 行
+
+### TTS 音色 + 缓存清理
+- 默认音色 `xiaoyun` → `ruoxi`（若溪），更自然
+- TTS 缓存自动清理：超过 200 个文件或 7 天未访问自动删除
+
+### 前端大改（见前端开发日志）
+- tabBar 移到顶部导航栏内，底部彻底干净
+- 华为真机兼容：100vh→100%、safeArea 兜底、全局键盘监听
+- 语音录音路由守卫、TTS 文本清洗、图片预览等
+
+涉及文件：
+- 新增 `server/app/utils/latex_render.js`、`server/app/utils/latex_server.js`、`server/app/utils/start_latex.sh`
+- 重写 `server/app/utils/deep_agent.py`
+- 修改 `server/app/routers/latex_proxy.py`
+- 前端多项
+

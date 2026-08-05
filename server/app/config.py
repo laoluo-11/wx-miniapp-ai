@@ -34,6 +34,10 @@ XF_API_SECRET = os.getenv("XF_API_SECRET", "")
 QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
 QWEN_API_HOST = os.getenv("QWEN_API_HOST", "")
 QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "")
+
+NLS_APPKEY = os.getenv("NLS_APPKEY", "")
+NLS_AK_ID = os.getenv("NLS_AK_ID", "")
+NLS_AK_SECRET = os.getenv("NLS_AK_SECRET", "")
 QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3-omini")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123456")
 USE_INTENT_CLASSIFIER = os.getenv("USE_INTENT_CLASSIFIER", "false").lower() == "true"
