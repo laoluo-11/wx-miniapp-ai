@@ -29,7 +29,7 @@ async def render(request: Request):
     if not tex:
         raise HTTPException(400, "缺少 tex 参数")
 
-    key = hashlib.md5(tex.encode()).hexdigest()
+    key = hashlib.md5((tex + "|v2").encode()).hexdigest()
     cached = os.path.join(CACHE_DIR, f"{key}.svg")
 
     if not os.path.exists(cached) or os.path.getsize(cached) < 100:
@@ -41,7 +41,7 @@ async def render(request: Request):
         except Exception:
             err = (
                 '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="22">'
-                '<rect width="100%" height="100%" fill="#000"/>'
+                '<rect width="100%" height="100%" fill="transparent"/>'
                 '<text y="16" fill="red" font-size="10">render error</text></svg>'
             )
             with open(cached, "w", encoding="utf-8") as f:
