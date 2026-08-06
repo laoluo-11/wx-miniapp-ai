@@ -393,6 +393,27 @@ def _clean_latex(text: str) -> str:
     text = text.replace("\\geq", "大于等于")
     text = text.replace("\\leq", "小于等于")
 
+    # 三角函数和数学函数
+    text = text.replace("\\sin", "正弦")
+    text = text.replace("\\cos", "余弦")
+    text = text.replace("\\tan", "正切")
+    text = text.replace("\\cot", "余切")
+    text = text.replace("\\sec", "正割")
+    text = text.replace("\\csc", "余割")
+    text = text.replace("\\arcsin", "反正弦")
+    text = text.replace("\\arccos", "反余弦")
+    text = text.replace("\\arctan", "反正切")
+    text = text.replace("\\sinh", "双曲正弦")
+    text = text.replace("\\cosh", "双曲余弦")
+    text = text.replace("\\tanh", "双曲正切")
+    text = text.replace("\\log", "对数")
+    text = text.replace("\\ln", "自然对数")
+    text = text.replace("\\lg", "常用对数")
+    text = text.replace("\\max", "最大值")
+    text = text.replace("\\min", "最小值")
+    text = text.replace("\\gcd", "最大公约数")
+    text = text.replace("\\lcm", "最小公倍数")
+
     # 8. 希腊字母
     text = text.replace("\\alpha", "阿尔法")
     text = text.replace("\\beta", "贝塔")
