@@ -200,6 +200,107 @@ import hashlib, os as _os, re
 TTS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads", "tts")
 _os.makedirs(TTS_DIR, exist_ok=True)
 
+
+def _match_brace(text: str, start: int) -> int:
+    """找到与 text[start-1] 的 { 匹配的 }，返回位置（含）"""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            if depth == 0:
+                return i
+            depth -= 1
+    return len(text) - 1
+
+
+def _clean_latex(text: str) -> str:
+    """将 LaTeX 公式标记转为口语化中文，避免 TTS 读出源码"""
+    import re as _re_latex
+
+    # 1. \frac{a}{b} → a分之b (处理嵌套花括号)
+    while "\\frac" in text:
+        idx = text.find("\\frac")
+        if idx + 6 >= len(text) or text[idx + 5] != "{":
+            text = text[:idx] + "分数" + text[idx + 5:]
+            continue
+        num_end = _match_brace(text, idx + 6)
+        num = text[idx + 6:num_end]
+        denom_start = num_end + 1
+        if denom_start >= len(text) or text[denom_start] != "{":
+            break
+        denom_end = _match_brace(text, denom_start + 1)
+        denom = text[denom_start + 1:denom_end]
+        text = text[:idx] + denom + "分之" + num + text[denom_end + 1:]
+
+    # 2. \sqrt[n]{x} → x开n次方 (先处理带方括号的)
+    text = _re_latex.sub(
+        r"\\sqrt\[([^\]]+)\]\{([^}]+)\}", r"\2开\1次方", text
+    )
+    # 3. \sqrt{x} → 根号x
+    text = _re_latex.sub(r"\\sqrt\{([^}]+)\}", r"根号\1", text)
+
+    # 4. x^{n} → x的n次方 (花括号版先)
+    text = _re_latex.sub(r"(\w)\^\{([^}]+)\}", r"\1的\2次方", text)
+    # 5. x^2 → x的2次方 (裸数字/字母版)
+    text = _re_latex.sub(r"(\w)\^(\d+)", r"\1的\2次方", text)
+
+    # 6. x_{n} → x下标n
+    text = _re_latex.sub(r"(\w)_\{([^}]+)\}", r"\1下标\2", text)
+    # x_1 → x下标1 (无花括号版)
+    text = _re_latex.sub(r"(\w)_(\d+)", r"\1下标\2", text)
+
+    # 7. 常见符号命令
+    text = text.replace("\\times", "乘")
+    text = text.replace("\\div", "除以")
+    text = text.replace("\\pm", "正负")
+    text = text.replace("\\infty", "无穷大")
+    text = text.replace("\\sum", "求和")
+    text = text.replace("\\int", "积分")
+    text = text.replace("\\lim", "极限")
+    text = text.replace("\\to", "趋向于")
+    text = text.replace("\\cdot", "乘以")
+    text = text.replace("\\neq", "不等于")
+    text = text.replace("\\approx", "约等于")
+    text = text.replace("\\geq", "大于等于")
+    text = text.replace("\\leq", "小于等于")
+
+    # 8. 希腊字母
+    text = text.replace("\\alpha", "阿尔法")
+    text = text.replace("\\beta", "贝塔")
+    text = text.replace("\\gamma", "伽马")
+    text = text.replace("\\delta", "德尔塔")
+    text = text.replace("\\theta", "西塔")
+    text = text.replace("\\lambda", "拉姆达")
+    text = text.replace("\\mu", "缪")
+    text = text.replace("\\pi", "派")
+    text = text.replace("\\sigma", "西格玛")
+    text = text.replace("\\omega", "欧米伽")
+    text = text.replace("\\epsilon", "伊普西龙")
+    text = text.replace("\\varphi", "斐")
+
+    # 9. 去掉 $$ 和 $ 包裹符
+    text = _re_latex.sub(r"\$\$([\s\S]*?)\$\$", r"\1", text)
+    text = _re_latex.sub(r"(?<!\\)\$([^$]+?)\$", r"\1", text)
+    # \( \) 和 \[ \]
+    text = _re_latex.sub(r"\\\(([\s\S]*?)\\\)", r"\1", text)
+    text = _re_latex.sub(r"\\\[([\s\S]*?)\\\]", r"\1", text)
+
+    # 10. 去掉无语音意义的 LaTeX 命令
+    text = _re_latex.sub(r"\\text\{[^}]*\}", "", text)
+    text = _re_latex.sub(r"\\mathbf\{([^}]*)\}", r"\1", text)
+    text = _re_latex.sub(r"\\mathrm\{([^}]*)\}", r"\1", text)
+    text = text.replace("\\displaystyle", "")
+    text = text.replace("\\qquad", " ")
+    text = text.replace("\\quad", " ")
+    text = text.replace("\\,", "")
+    text = text.replace("\\!", "")
+    text = _re_latex.sub(r"\\\\", "", text)  # line breaks in LaTeX
+
+    # 防止连续拼音字母被 TTS 当成英文词读 (mc → "Em Cee")
+    text = _re_latex.sub(r"([a-zA-Z])([a-zA-Z])([\u4e00-\u9fff\u7684])", r"\1 \2\3", text)
+    return text
+
 def _split_sentences(text: str, max_len: int = 200) -> list:
     """Split text by sentences, merge short ones up to max_len chars"""
     sent = re.findall(r'[^。！？.!?\n]+[。！？.!?\n]*', text.strip())
@@ -238,7 +339,8 @@ async def tts(req: TtsReq, user: dict = Depends(current_user)):
     if not req.text or not req.text.strip():
         raise HTTPException(400, "文本为空")
 
-    sentences = _split_sentences(req.text.strip(), max_len=200)
+        clean_text = _clean_latex(req.text.strip())
+    sentences = _split_sentences(clean_text, max_len=200)
     segments = []
 
     for s in sentences:
