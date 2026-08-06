@@ -222,7 +222,7 @@ def _clean_markdown(text: str) -> str:
     text = _re_md.sub(r"~~([^~]+)~~", r"\1", text)
 
     # 4. 标题 # ## ### → 只保留文字
-    text = _re_md.sub(r"^#{1,6}\s+", "", text, flags=_re_md.MULTILINE)
+    text = _re_md.sub(r"^#{1,6}\s*", "", text, flags=_re_md.MULTILINE)
 
     # 5. 无序列表 - * + → 去掉标记符
     text = _re_md.sub(r"^[\-\*\+]\s+", "", text, flags=_re_md.MULTILINE)
