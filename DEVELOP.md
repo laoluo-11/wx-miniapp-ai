@@ -1,6 +1,6 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-05
+> 最后更新：2026-08-06
 
 ## 项目概述
 
@@ -16,6 +16,42 @@ voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送�
 - `x_{n}` / `x_1` → "x下标n"/"x下标1"
 - 希腊字母、符号命令翻译、$$/$包裹符剥离
 - 连续拉丁字母间插空格防TTS连读（mc → m c）
+
+
+## 2026-08-06 TTS语音播报全面优化 + LaTeX渲染修复
+
+### TTS 清洗管线 (`voice.py`)
+
+`/tts` 端点新增三层清洗管线：`_clean_units()` → `_clean_markdown()` → `_clean_latex()` → 阿里NLS
+
+#### _clean_units() — 计量单位过滤（50+单位）
+- 长度：nm/mm/cm/dm/km/m、面积/体积复合单位
+- 重量：t/kg/mg/g
+- 温度：°C/°F/K/°(角度)
+- 电学：V/A/W/Hz/Ω 及 kV/mA/kW/GHz 等
+- 力/压强/能量：N/Pa/J/cal 及 kN/MPa/kJ/kcal
+- 时间：ms/s/min/h、容积：mL/L
+- 其他：mol/dB/mAh/kWh/Mbps
+
+#### _clean_markdown() — Markdown格式过滤
+- **粗体** *斜体* `代码` ```代码块``` ~~删除~~
+- ##标题、-列表、1.有序、>引用、---水平线
+- [链接](url) → 文字
+
+#### _clean_latex() — LaTeX公式翻译
+- \frac、\sqrt、幂/下标（栈匹配花括号处理嵌套）
+- 希腊字母音译、符号命令（×÷±∞∑∫lim→≠≈≥≤）
+- 三角函数音译：\sin→萨茵、\cos→口萨茵、\tan→探针特、\arcsin→阿克萨茵等
+- 对数：\log→烙格、\ln→烙恩
+- 集合：∀∃∈∪∩∅、几何：∠△∥⊥≅≡、推理：∴∵⇒⇔
+- 省略号：\ldots/\cdots、向量：\vec/\overrightarrow
+- 微积分：∇梯度、∂偏导、∝正比于
+
+### LaTeX SVG 渲染修复 (`latex_server.js` + `latex_proxy.py`)
+- 背景 #000 → transparent（公式透明底）
+- CSS 选择器 path/text/use → *（覆盖 line/rect 分数线）
+- 缓存 key 加版本号 v2 强制刷新
+
 
 ## 系统架构
 
