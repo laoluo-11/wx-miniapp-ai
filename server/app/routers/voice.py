@@ -202,6 +202,45 @@ _os.makedirs(TTS_DIR, exist_ok=True)
 
 
 
+
+def _clean_units(text: str) -> str:
+    """将常见计量单位转为中文，避免 TTS 逐字母拼读。复合单位优先匹配。"""
+    import re as _re_unit
+
+    # 复合单位 — 必须在单体之前匹配
+    text = _re_unit.sub(r"(\d+)\s*km/h", r"\1千米每小时", text)
+    text = _re_unit.sub(r"(\d+)\s*m/s", r"\1米每秒", text)
+    text = _re_unit.sub(r"(\d+)\s*m\u00b2", r"\1平方米", text)
+    text = _re_unit.sub(r"(\d+)\s*m\u00b3", r"\1立方米", text)
+    text = _re_unit.sub(r"(\d+)\s*km\u00b2", r"\1平方千米", text)
+
+    # 长度 — 单体
+    text = _re_unit.sub(r"(\d+)\s*mm", r"\1毫米", text)
+    text = _re_unit.sub(r"(\d+)\s*cm", r"\1厘米", text)
+    text = _re_unit.sub(r"(\d+)\s*dm", r"\1分米", text)
+    text = _re_unit.sub(r"(\d+)\s*km", r"\1千米", text)
+    # m 最后 — 用 (?![a-zA-Z]) 替代 \b 避免 CJK 边界问题
+    text = _re_unit.sub(r"(\d+)\s*m(?![a-zA-Z])", r"\1米", text)
+
+    # 重量
+    text = _re_unit.sub(r"(\d+)\s*kg", r"\1千克", text)
+    text = _re_unit.sub(r"(\d+)\s*mg", r"\1毫克", text)
+    text = _re_unit.sub(r"(\d+)\s*g(?![a-zA-Z])", r"\1克", text)
+
+    # 温度
+    text = _re_unit.sub(r"(\d+)\s*\u00b0C", r"\1摄氏度", text)
+    text = _re_unit.sub(r"(\d+)\s*℃", r"\1摄氏度", text)
+
+    # 容积
+    text = _re_unit.sub(r"(\d+)\s*mL", r"\1毫升", text)
+    text = _re_unit.sub(r"(\d+)\s*L(?![a-zA-Z])", r"\1升", text)
+
+    # 时间
+    text = _re_unit.sub(r"(\d+)\s*h(?![a-zA-Z])", r"\1小时", text)
+    text = _re_unit.sub(r"(\d+)\s*min(?![a-zA-Z])", r"\1分钟", text)
+
+    return text
+
 def _clean_markdown(text: str) -> str:
     """去除 Markdown 格式标记，避免 TTS 读出 * # ` 等符号"""
     import re as _re_md
@@ -382,7 +421,7 @@ async def tts(req: TtsReq, user: dict = Depends(current_user)):
     if not req.text or not req.text.strip():
         raise HTTPException(400, "文本为空")
 
-    clean_text = _clean_latex(_clean_markdown(req.text.strip()))
+    clean_text = _clean_latex(_clean_markdown(_clean_units(req.text.strip())))
     sentences = _split_sentences(clean_text, max_len=200)
     segments = []
 
