@@ -346,6 +346,25 @@ def _clean_latex(text: str) -> str:
     """将 LaTeX 公式标记转为口语化中文，避免 TTS 读出源码"""
     import re as _re_latex
 
+    # 0. 向量（先处理，避免花括号干扰后续）
+    while "\\vec" in text:
+        idx = text.find("\\vec")
+        if idx + 5 < len(text) and text[idx + 4] == "{":
+            end = _match_brace(text, idx + 5)
+            inner = text[idx + 5:end]
+            text = text[:idx] + "向量" + inner + text[end + 1:]
+        else:
+            text = text[:idx] + "向量" + text[idx + 4:]
+    while "\\overrightarrow" in text:
+        idx = text.find("\\overrightarrow")
+        brace_start = idx + 15  # len("\\overrightarrow") = 15
+        if brace_start < len(text) and text[brace_start] == "{":
+            end = _match_brace(text, brace_start + 1)
+            inner = text[brace_start + 1:end]
+            text = text[:idx] + "向量" + inner + text[end + 1:]
+        else:
+            text = text[:idx] + "向量" + text[idx + 17:]
+
     # 1. \frac{a}{b} → a分之b (处理嵌套花括号)
     while "\\frac" in text:
         idx = text.find("\\frac")
@@ -392,6 +411,45 @@ def _clean_latex(text: str) -> str:
     text = text.replace("\\approx", "约等于")
     text = text.replace("\\geq", "大于等于")
     text = text.replace("\\leq", "小于等于")
+
+    # 省略号
+    text = text.replace("\\ldots", "省略号")
+    text = text.replace("\\cdots", "省略号")
+    text = text.replace("\\vdots", "省略号")
+    text = text.replace("\\ddots", "省略号")
+
+    # 推理符号
+    text = text.replace("\\therefore", "所以")
+    text = text.replace("\\because", "因为")
+    text = text.replace("\\Rightarrow", "推出")
+    text = text.replace("\\Leftrightarrow", "等价于")
+    text = text.replace("\\rightarrow", "右箭头")
+
+    # 集合/关系
+    text = text.replace("\\forall", "任意")
+    text = text.replace("\\exists", "存在")
+    text = text.replace("\\in", "属于")
+    text = text.replace("\\notin", "不属于")
+    text = text.replace("\\subset", "包含于")
+    text = text.replace("\\subseteq", "包含于等于")
+    text = text.replace("\\cup", "并")
+    text = text.replace("\\cap", "交")
+    text = text.replace("\\emptyset", "空集")
+
+    # 几何
+    text = text.replace("\\angle", "角")
+    text = text.replace("\\triangle", "三角形")
+    text = text.replace("\\parallel", "平行")
+    text = text.replace("\\perp", "垂直")
+    text = text.replace("\\circ", "度")
+    text = text.replace("\\sim", "相似")
+    text = text.replace("\\cong", "全等")
+    text = text.replace("\\equiv", "恒等")
+
+    # 微积分
+    text = text.replace("\\nabla", "梯度")
+    text = text.replace("\\partial", "偏导")
+    text = text.replace("\\propto", "正比于")
 
     # 三角函数和数学函数
     text = text.replace("\\sin", "萨茵")
