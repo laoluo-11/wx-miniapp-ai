@@ -204,40 +204,86 @@ _os.makedirs(TTS_DIR, exist_ok=True)
 
 
 def _clean_units(text: str) -> str:
-    """将常见计量单位转为中文，避免 TTS 逐字母拼读。复合单位优先匹配。"""
+    """将常见计量单位转为中文，避免 TTS 逐字母拼读。复合优先、单体在后。"""
     import re as _re_unit
 
-    # 复合单位 — 必须在单体之前匹配
+    # === 复合单位（优先匹配）===
     text = _re_unit.sub(r"(\d+)\s*km/h", r"\1千米每小时", text)
     text = _re_unit.sub(r"(\d+)\s*m/s", r"\1米每秒", text)
-    text = _re_unit.sub(r"(\d+)\s*m\u00b2", r"\1平方米", text)
-    text = _re_unit.sub(r"(\d+)\s*m\u00b3", r"\1立方米", text)
+    text = _re_unit.sub(r"(\d+)\s*m/min", r"\1米每分钟", text)
     text = _re_unit.sub(r"(\d+)\s*km\u00b2", r"\1平方千米", text)
+    text = _re_unit.sub(r"(\d+)\s*m\u00b2", r"\1平方米", text)
+    text = _re_unit.sub(r"(\d+)\s*cm\u00b2", r"\1平方厘米", text)
+    text = _re_unit.sub(r"(\d+)\s*mm\u00b2", r"\1平方毫米", text)
+    text = _re_unit.sub(r"(\d+)\s*m\u00b3", r"\1立方米", text)
+    text = _re_unit.sub(r"(\d+)\s*cm\u00b3", r"\1立方厘米", text)
+    text = _re_unit.sub(r"(\d+)\s*dm\u00b3", r"\1立方分米", text)
+    text = _re_unit.sub(r"(\d+)\s*g/cm\u00b3", r"\1克每立方厘米", text)
+    text = _re_unit.sub(r"(\d+)\s*kg/m\u00b3", r"\1千克每立方米", text)
+    text = _re_unit.sub(r"(\d+)\s*mol/L", r"\1摩尔每升", text)
+    text = _re_unit.sub(r"(\d+)\s*mmol/L", r"\1毫摩尔每升", text)
+    text = _re_unit.sub(r"(\d+)\s*kWh", r"\1千瓦时", text)
+    text = _re_unit.sub(r"(\d+)\s*Mbps", r"\1兆比特每秒", text)
 
-    # 长度 — 单体
-    text = _re_unit.sub(r"(\d+)\s*mm", r"\1毫米", text)
-    text = _re_unit.sub(r"(\d+)\s*cm", r"\1厘米", text)
-    text = _re_unit.sub(r"(\d+)\s*dm", r"\1分米", text)
-    text = _re_unit.sub(r"(\d+)\s*km", r"\1千米", text)
-    # m 最后 — 用 (?![a-zA-Z]) 替代 \b 避免 CJK 边界问题
+    # === 长度 ===
+    text = _re_unit.sub(r"(\d+)\s*nm(?![a-zA-Z])", r"\1纳米", text)
+    text = _re_unit.sub(r"(\d+)\s*mm(?![a-zA-Z])", r"\1毫米", text)
+    text = _re_unit.sub(r"(\d+)\s*cm(?![a-zA-Z])", r"\1厘米", text)
+    text = _re_unit.sub(r"(\d+)\s*dm(?![a-zA-Z])", r"\1分米", text)
+    text = _re_unit.sub(r"(\d+)\s*km(?![a-zA-Z])", r"\1千米", text)
     text = _re_unit.sub(r"(\d+)\s*m(?![a-zA-Z])", r"\1米", text)
 
-    # 重量
-    text = _re_unit.sub(r"(\d+)\s*kg", r"\1千克", text)
-    text = _re_unit.sub(r"(\d+)\s*mg", r"\1毫克", text)
+    # === 重量 ===
+    text = _re_unit.sub(r"(\d+)\s*t(?![a-zA-Z])", r"\1吨", text)
+    text = _re_unit.sub(r"(\d+)\s*kg(?![a-zA-Z])", r"\1千克", text)
+    text = _re_unit.sub(r"(\d+)\s*mg(?![a-zA-Z])", r"\1毫克", text)
     text = _re_unit.sub(r"(\d+)\s*g(?![a-zA-Z])", r"\1克", text)
 
-    # 温度
+    # === 温度（°C 优先于 °）===
     text = _re_unit.sub(r"(\d+)\s*\u00b0C", r"\1摄氏度", text)
-    text = _re_unit.sub(r"(\d+)\s*℃", r"\1摄氏度", text)
+    text = _re_unit.sub(r"(\d+)\s*\u2103", r"\1摄氏度", text)
+    text = _re_unit.sub(r"(\d+)\s*\u00b0F", r"\1华氏度", text)
+    text = _re_unit.sub(r"(\d+)\s*K(?![a-zA-Z])", r"\1开尔文", text)
+    text = _re_unit.sub(r"(\d+)\s*\u00b0(?![CF])", r"\1度", text)
 
-    # 容积
-    text = _re_unit.sub(r"(\d+)\s*mL", r"\1毫升", text)
+    # === 容积 ===
+    text = _re_unit.sub(r"(\d+)\s*mL(?![a-zA-Z])", r"\1毫升", text)
     text = _re_unit.sub(r"(\d+)\s*L(?![a-zA-Z])", r"\1升", text)
 
-    # 时间
+    # === 时间 ===
+    text = _re_unit.sub(r"(\d+)\s*ms(?![a-zA-Z])", r"\1毫秒", text)
     text = _re_unit.sub(r"(\d+)\s*h(?![a-zA-Z])", r"\1小时", text)
     text = _re_unit.sub(r"(\d+)\s*min(?![a-zA-Z])", r"\1分钟", text)
+    text = _re_unit.sub(r"(\d+)\s*s(?![a-zA-Z])", r"\1秒", text)
+
+    # === 电学 ===
+    text = _re_unit.sub(r"(\d+)\s*kV(?![a-zA-Z])", r"\1千伏", text)
+    text = _re_unit.sub(r"(\d+)\s*mA(?![a-zA-Z])", r"\1毫安", text)
+    text = _re_unit.sub(r"(\d+)\s*kW(?![a-zA-Z])", r"\1千瓦", text)
+    text = _re_unit.sub(r"(\d+)\s*mAh(?![a-zA-Z])", r"\1毫安时", text)
+    text = _re_unit.sub(r"(\d+)\s*GHz(?![a-zA-Z])", r"\1吉赫", text)
+    text = _re_unit.sub(r"(\d+)\s*MHz(?![a-zA-Z])", r"\1兆赫", text)
+    text = _re_unit.sub(r"(\d+)\s*kHz(?![a-zA-Z])", r"\1千赫", text)
+    text = _re_unit.sub(r"(\d+)\s*Hz(?![a-zA-Z])", r"\1赫兹", text)
+    text = _re_unit.sub(r"(\d+)\s*V(?![a-zA-Z])", r"\1伏", text)
+    text = _re_unit.sub(r"(\d+)\s*A(?![a-zA-Z])", r"\1安", text)
+    text = _re_unit.sub(r"(\d+)\s*W(?![a-zA-Z])", r"\1瓦", text)
+    text = _re_unit.sub(r"(\d+)\s*\u03a9", r"\1欧姆", text)
+
+    # === 力/压强/能量 ===
+    text = _re_unit.sub(r"(\d+)\s*kN(?![a-zA-Z])", r"\1千牛", text)
+    text = _re_unit.sub(r"(\d+)\s*kPa(?![a-zA-Z])", r"\1千帕", text)
+    text = _re_unit.sub(r"(\d+)\s*MPa(?![a-zA-Z])", r"\1兆帕", text)
+    text = _re_unit.sub(r"(\d+)\s*kJ(?![a-zA-Z])", r"\1千焦", text)
+    text = _re_unit.sub(r"(\d+)\s*kcal(?![a-zA-Z])", r"\1千卡", text)
+    text = _re_unit.sub(r"(\d+)\s*N(?![a-zA-Z])", r"\1牛", text)
+    text = _re_unit.sub(r"(\d+)\s*Pa(?![a-zA-Z])", r"\1帕", text)
+    text = _re_unit.sub(r"(\d+)\s*J(?![a-zA-Z])", r"\1焦耳", text)
+    text = _re_unit.sub(r"(\d+)\s*cal(?![a-zA-Z])", r"\1卡路里", text)
+
+    # === 其他 ===
+    text = _re_unit.sub(r"(\d+)\s*mol(?![a-zA-Z])", r"\1摩尔", text)
+    text = _re_unit.sub(r"(\d+)\s*dB(?![a-zA-Z])", r"\1分贝", text)
 
     return text
 
