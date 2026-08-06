@@ -18,6 +18,18 @@ voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送�
 - 连续拉丁字母间插空格防TTS连读（mc → m c）
 
 
+## 2026-08-06 TTS LaTeX 括号翻译
+
+### 括号命令口语化 (voice.py _clean_latex)
+- `\left(` `\right)` `\big(` 系列 → 左括号/右括号；`\left[` 系列 → 左中括号/右中括号
+- `\{` `\}`（集合）→ 左花括号/右花括号；`\langle` `\rangle` → 左尖括号/右尖括号
+- `\left| x \right|` 配对 → x的绝对值；`\lvert`/`\rvert`/`\vert`/`\Vert` → 竖线
+- `\lfloor`/`\rfloor`/`\lceil`/`\rceil` → 取整符号；`\mid` → 满足
+- 普通 ASCII `()` `[]` `{}` 也翻译为左/右括号（全角中文标点不受影响）
+- `(x+1)^2` / `(x+1)^{2}` → (x+1)的2次方（括号后跟上标补充处理）
+- 残留的 `\left`/`\right` 命令（后跟未覆盖符号时）自动清除
+- 涉及文件：`server/app/routers/voice.py`
+
 ## 2026-08-06 SVG 图表渲染规范优化
 
 ### SVG 规范调整 (diagram_prompt.py)
