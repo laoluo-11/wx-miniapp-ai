@@ -18,6 +18,14 @@ voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送�
 - 连续拉丁字母间插空格防TTS连读（mc → m c）
 
 
+## 2026-08-06 SVG 图表渲染规范优化
+
+### SVG 规范调整 (diagram_prompt.py)
+- DIAGRAM_SYSTEM_PROMPT 追加约束：SVG 内部组件尽量浅色背景+黑色文字，禁止深色背景+黑色文字
+- 原因：深色背景配黑色文字导致图表内容不可读
+- 涉及文件：
+  - 修改 `server/app/utils/diagram_prompt.py`
+
 ## 2026-08-06 TTS语音播报全面优化 + LaTeX渲染修复
 
 ### TTS 清洗管线 (`voice.py`)
