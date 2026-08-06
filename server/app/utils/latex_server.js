@@ -40,10 +40,10 @@ const server = http.createServer((req, res) => {
             const svg = adaptor.innerHTML(node);
             const styled = svg.replace(
                 /(<svg[^>]*style=")/,
-                '$1background:#000;'
+                '$1background:transparent;'
             ).replace(
                 /(<svg[^>]*>)/,
-                '$1<style>svg path,svg text,svg use{fill:#fff!important;stroke:#fff!important}</style>'
+                '$1<style>svg *{fill:#fff!important;stroke:#fff!important}svg rect[fill="none"]{fill:none!important}svg line[stroke="none"]{stroke:none!important}</style>'
             );
             res.writeHead(200, { "Content-Type": "image/svg+xml" });
             res.end(styled);
