@@ -563,14 +563,18 @@ def _clean_latex(text: str) -> str:
     text = _re_latex.sub(r"([a-zA-Z])([a-zA-Z])([\u4e00-\u9fff\u7684])", r"\1 \2\3", text)
     return text
 
-def _split_sentences(text: str, max_len: int = 200) -> list:
-    """Split text by sentences, merge short ones up to max_len chars"""
-    sent = re.findall(r'[^。！？.!?\n]+[。！？.!?\n]*', text.strip())
+def _split_sentences(text: str, max_len: int = 80) -> list:
+    """按句切分；返回 [(text, para_end), ...]
+    - 相邻短句合并到 max_len 内（默认 80 字，保证句间停顿可控）
+    - 遇到段落边界(\n)立即结算当前段，段落不混段，段落间停顿最长
+    """
+    sent = re.findall(r'[^\u3002\uff01\uff1f.!?\n]+[\u3002\uff01\uff1f.!?\n]*', text.strip())
     if not sent:
-        return [text.strip()]
+        return [(text.strip(), False)]
     out = []
     buf = ""
     for s in sent:
+        para_end = s.endswith("\n")
         s = s.strip()
         if not s:
             continue
@@ -578,11 +582,37 @@ def _split_sentences(text: str, max_len: int = 200) -> list:
             buf += s
         else:
             if buf:
-                out.append(buf)
+                out.append((buf, False))
             buf = s
+        if para_end:
+            out.append((buf, True))
+            buf = ""
     if buf:
-        out.append(buf)
+        out.append((buf, False))
     return out
+
+
+def _pause_ms(s: str, para_end: bool) -> int:
+    """根据段末标点/段落边界估算播完后的停顿毫秒数，让语音节奏更自然"""
+    if para_end:
+        return 500  # 段落结束：最长停顿
+    tail = s.strip()
+    if not tail:
+        return 300
+    last = tail[-1]
+    if last in "\u3002\uff01\uff1f\u2026":   # 。！？…
+        return 400
+    if last in ".!?":
+        return 500
+    if last in "\uff1b;":                        # ；;
+        return 350
+    if last in "\uff1a:":                        # ：:
+        return 300
+    if last in "\uff0c,":                        # ，
+        return 200
+    if last in "\u3001":                         # 、
+        return 150
+    return 300
 
 
 async def _tts_one(text: str, voice: str = "ruoxi") -> str | None:
@@ -602,13 +632,13 @@ async def tts(req: TtsReq, user: dict = Depends(current_user)):
         raise HTTPException(400, "文本为空")
 
     clean_text = _clean_latex(_clean_markdown(_clean_units(req.text.strip())))
-    sentences = _split_sentences(clean_text, max_len=200)
+    sentences = _split_sentences(clean_text, max_len=80)
     segments = []
 
-    for s in sentences:
+    for s, para_end in sentences:
         url = await _tts_one(s, req.voice)
         if url:
-            segments.append({"text": s, "url": url})
+            segments.append({"text": s, "url": url, "pauseMs": _pause_ms(s, para_end)})
         # 单个句子失败不阻塞整体
 
     if not segments:

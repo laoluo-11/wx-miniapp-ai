@@ -18,6 +18,26 @@ voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送�
 - 连续拉丁字母间插空格防TTS连读（mc → m c）
 
 
+## 2026-08-06 语音播报生动性优化（停顿 + 语速 + prompt 引导）
+
+### 停顿注入 (voice.py)
+- `_split_sentences` 重写：max_len 200 → 80，返回 [(text, para_end)]，段落边界就地结算不混段
+- 新增 `_pause_ms()`：按句末标点映射停顿 —— 段落 500ms / 。！？… 400ms / .!? 500ms / ；; 350ms / ：: 300ms / 逗号 200ms / 、 150ms / 默认 300ms（2026-08-06 段落 800→500、句号 600→400 试听微调）
+- `/tts` 返回每段 `pauseMs` 字段，前端播完该段后按此停顿再播下一段
+
+### 语速/音调 (tts_ali.py)
+- `speech_rate` 0 → -10（略慢、更从容）；`pitch_rate` 0 → 5（略高、更亲切）
+- TTS 缓存 key 加版本 `tts_v2|` 前缀，强制旧缓存失效，新参数生效
+
+### AI 输出引导 (chat.py)
+- `_build_system_prompt` 新增 [语音播报要求]：多用短句（≤40字）、口语化语气词、段落分明空行分隔、避免超长复合句
+
+涉及文件：
+- `server/app/routers/voice.py`
+- `server/app/utils/tts_ali.py`
+- `server/app/routers/chat.py`
+- 前端 `message-bubble.js`/`chat.js`（见前端开发日志）
+
 ## 2026-08-06 TTS LaTeX 括号翻译
 
 ### 括号命令口语化 (voice.py _clean_latex)

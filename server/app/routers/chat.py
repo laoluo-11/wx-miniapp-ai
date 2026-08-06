@@ -179,6 +179,7 @@ def _build_system_prompt(user: dict = None) -> str:
         uid = user.get("id", "")
         if name:
             prompt += f"\n\n[当前用户]\n用户ID: {uid}\n用户昵称: {name}\n请用这个昵称称呼用户。"
+    prompt += "\n\n[语音播报要求] 回答将可能被TTS朗读，请注意：①多用短句，每句话尽量不超过40字；②适当使用口语化语气词（如「你看」「注意啦」「我们来想」），让节奏自然；③段落分明，段与段之间用空行分隔；④避免堆砌超长复合句和连续英文逗号，该停顿的地方用句号收尾。"
     return prompt
 
 

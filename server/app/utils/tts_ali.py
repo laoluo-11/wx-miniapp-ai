@@ -101,7 +101,7 @@ async def synthesize(text: str, voice: str = "ruoxi") -> str | None:
     text = text.strip()
 
     # MD5 缓存
-    key = hashlib.md5((text + voice).encode()).hexdigest()
+    key = hashlib.md5(("tts_v2|" + text + voice).encode()).hexdigest()
     cache_path = os.path.join(_CACHE_DIR, f"{key}.mp3")
     if os.path.exists(cache_path) and os.path.getsize(cache_path) > 200:
         # 更新访问时间（部分系统 atime 可能被禁用，touch mtime 更可靠）
@@ -120,8 +120,8 @@ async def synthesize(text: str, voice: str = "ruoxi") -> str | None:
         "sample_rate": 16000,
         "voice": voice,
         "volume": 50,
-        "speech_rate": 0,
-        "pitch_rate": 0,
+        "speech_rate": -10,
+        "pitch_rate": 5,
     }, ensure_ascii=False)
 
     async with httpx.AsyncClient(timeout=25) as client:
