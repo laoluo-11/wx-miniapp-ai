@@ -201,6 +201,49 @@ TTS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "uploads",
 _os.makedirs(TTS_DIR, exist_ok=True)
 
 
+
+def _clean_markdown(text: str) -> str:
+    """去除 Markdown 格式标记，避免 TTS 读出 * # ` 等符号"""
+    import re as _re_md
+
+    # 1. 代码块 ```...``` → 移除
+    text = _re_md.sub(r"```[\s\S]*?```", "", text)
+    # 行内代码 `...` → 只保留文字
+    text = _re_md.sub(r"`([^`]+)`", r"\1", text)
+
+    # 2. 粗体 **text** / __text__ → text
+    text = _re_md.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = _re_md.sub(r"__([^_]+)__", r"\1", text)
+    # 斜体 *text* / _text_ — 注意不要误伤数学表达式中的 *
+    text = _re_md.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", text)
+    text = _re_md.sub(r"(?<!_)_([^_]+)_(?!_)", r"\1", text)
+
+    # 3. 删除线 ~~text~~ → text
+    text = _re_md.sub(r"~~([^~]+)~~", r"\1", text)
+
+    # 4. 标题 # ## ### → 只保留文字
+    text = _re_md.sub(r"^#{1,6}\s+", "", text, flags=_re_md.MULTILINE)
+
+    # 5. 无序列表 - * + → 去掉标记符
+    text = _re_md.sub(r"^[\-\*\+]\s+", "", text, flags=_re_md.MULTILINE)
+
+    # 6. 有序列表 1. 2. → 去掉序号
+    text = _re_md.sub(r"^\d+\.\s+", "", text, flags=_re_md.MULTILINE)
+
+    # 7. 引用 > → 去掉标记
+    text = _re_md.sub(r"^>\s+", "", text, flags=_re_md.MULTILINE)
+
+    # 8. 水平线 --- *** ___ → 去掉整行
+    text = _re_md.sub(r"^[\-\*_]{3,}\s*$", "", text, flags=_re_md.MULTILINE)
+
+    # 9. 链接 [text](url) → text (图片已在前面处理)
+    text = _re_md.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+
+    # 10. 多余空行合并
+    text = _re_md.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
+
 def _match_brace(text: str, start: int) -> int:
     """找到与 text[start-1] 的 { 匹配的 }，返回位置（含）"""
     depth = 0
@@ -339,7 +382,7 @@ async def tts(req: TtsReq, user: dict = Depends(current_user)):
     if not req.text or not req.text.strip():
         raise HTTPException(400, "文本为空")
 
-        clean_text = _clean_latex(req.text.strip())
+    clean_text = _clean_latex(_clean_markdown(req.text.strip()))
     sentences = _split_sentences(clean_text, max_len=200)
     segments = []
 
