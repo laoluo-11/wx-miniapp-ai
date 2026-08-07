@@ -475,57 +475,51 @@ def _clean_latex(text: str) -> str:
     text = text.replace("\\gcd", "最大公约数")
     text = text.replace("\\lcm", "最小公倍数")
 
-    # 7.5 括号命令翻译（\left \right \big 系列、花括号、尖括号、竖线）
+    # 7.5 括号命令：不播报，直接删除（有语义的绝对值/竖线/满足保留）
     # 绝对值配对：\left| x \right| → x的绝对值
     text = _re_latex.sub(r"\\left\|([\s\S]*?)\\right\|", r"\1的绝对值", text)
-    # \left \right 系列
-    text = text.replace("\\left(", "左括号")
-    text = text.replace("\\right)", "右括号")
-    text = text.replace("\\left[", "左中括号")
-    text = text.replace("\\right]", "右中括号")
-    text = text.replace("\\left\\{", "左花括号")
-    text = text.replace("\\right\\}", "右花括号")
-    # \big \Big \bigg \Bigg 系列（含 l/r 变体）
-    for _br in ["\\bigl(", "\\Bigl(", "\\biggl(", "\\Biggl(", "\\big(", "\\Big(", "\\bigg(", "\\Bigg("]:
-        text = text.replace(_br, "左括号")
-    for _br in ["\\bigr)", "\\Bigr)", "\\biggr)", "\\Biggr)", "\\big)", "\\Big)", "\\bigg)", "\\Bigg)"]:
-        text = text.replace(_br, "右括号")
-    for _br in ["\\bigl[", "\\Bigl[", "\\biggl[", "\\Biggl[", "\\big[", "\\Big[", "\\bigg[", "\\Bigg["]:
-        text = text.replace(_br, "左中括号")
-    for _br in ["\\bigr]", "\\Bigr]", "\\biggr]", "\\Biggr]", "\\big]", "\\Big]", "\\bigg]", "\\Bigg]"]:
-        text = text.replace(_br, "右中括号")
-    for _br in ["\\bigl\\{", "\\Bigl\\{", "\\biggl\\{", "\\Biggl\\{", "\\big\\{", "\\Big\\{", "\\bigg\\{", "\\Bigg\\{"]:
-        text = text.replace(_br, "左花括号")
-    for _br in ["\\bigr\\}", "\\Bigr\\}", "\\biggr\\}", "\\Biggr\\}", "\\big\\}", "\\Big\\}", "\\bigg\\}", "\\Bigg\\}"]:
-        text = text.replace(_br, "右花括号")
-    # 转义花括号（集合 \{1,2,3\}）
-    text = text.replace("\\{", "左花括号")
-    text = text.replace("\\}", "右花括号")
-    # 尖括号
-    text = text.replace("\\langle", "左尖括号")
-    text = text.replace("\\rangle", "右尖括号")
-    # 取整/上取整符号
-    text = text.replace("\\lfloor", "左取整符号")
-    text = text.replace("\\rfloor", "右取整符号")
-    text = text.replace("\\lceil", "左上取整符号")
-    text = text.replace("\\rceil", "右上取整符号")
+    # \left \right 系列 → 删除
+    text = text.replace("\\left(", "")
+    text = text.replace("\\right)", "")
+    text = text.replace("\\left[", "")
+    text = text.replace("\\right]", "")
+    text = text.replace("\\left\\{", "")
+    text = text.replace("\\right\\}", "")
+    # \big \Big \bigg \Bigg 系列（含 l/r 变体）→ 删除
+    for _br in ["\\bigl(", "\\Bigl(", "\\biggl(", "\\Biggl(", "\\big(", "\\Big(", "\\bigg(", "\\Bigg(",
+                "\\bigr)", "\\Bigr)", "\\biggr)", "\\Biggr)", "\\big)", "\\Big)", "\\bigg)", "\\Bigg)",
+                "\\bigl[", "\\Bigl[", "\\biggl[", "\\Biggl[", "\\big[", "\\Big[", "\\bigg[", "\\Bigg[",
+                "\\bigr]", "\\Bigr]", "\\biggr]", "\\Biggr]", "\\big]", "\\Big]", "\\bigg]", "\\Bigg]",
+                "\\bigl\\{", "\\Bigl\\{", "\\biggl\\{", "\\Biggl\\{", "\\big\\{", "\\Big\\{", "\\bigg\\{", "\\Bigg\\{",
+                "\\bigr\\}", "\\Bigr\\}", "\\biggr\\}", "\\Biggr\\}", "\\big\\}", "\\Big\\}", "\\bigg\\}", "\\Bigg\\}"]:
+        text = text.replace(_br, "")
+    # 转义花括号（集合 \{1,2,3\}）→ 删除括号
+    text = text.replace("\\{", "")
+    text = text.replace("\\}", "")
+    # 尖括号（内积）→ 删除
+    text = text.replace("\\langle", "")
+    text = text.replace("\\rangle", "")
+    # 取整符号 → 删除
+    text = text.replace("\\lfloor", "")
+    text = text.replace("\\rfloor", "")
+    text = text.replace("\\lceil", "")
+    text = text.replace("\\rceil", "")
     # \left \right 后跟未覆盖符号（如 \left\langle）时，删掉残留命令
     text = text.replace("\\left", "")
     text = text.replace("\\right", "")
-    # 集合竖线 \mid → 满足
+    # 集合竖线 \mid → 满足（保留语义）
     text = text.replace("\\mid", "满足")
     # 竖线（绝对值/范数）
-    text = text.replace("\\lvert", "左竖线")
-    text = text.replace("\\rvert", "右竖线")
-    text = text.replace("\\vert", "竖线")
-    text = text.replace("\\Vert", "双竖线")
-    # 普通 ASCII 括号 → 口语化（全角中文标点不受影响）
-    text = text.replace("(", "左括号")
-    text = text.replace(")", "右括号")
-    text = text.replace("[", "左中括号")
-    text = text.replace("]", "右中括号")
-    text = text.replace("{", "左花括号")
-    text = text.replace("}", "右花括号")
+    text = text.replace("\\lvert", "")
+    text = text.replace("\\rvert", "")
+    text = text.replace("\\vert", "")
+    text = text.replace("\\Vert", "")
+
+    # 7.6 负号翻译：-5 → 负5（前面是数字/字母/右括号时为减法，保留不动）
+    # 负号+数字（含小数），如 -5、=-5、-0.5
+    text = _re_latex.sub(r"(?<![0-9a-zA-Z)\]\uff09])-(\d+(?:\.\d+)?)", r"负\1", text)
+    # 负号+字母/变量，如 -x、-a
+    text = _re_latex.sub(r"(?<![0-9a-zA-Z)\]\uff09])-([a-zA-Z])", r"负\1", text)
 
     # 8. 希腊字母
     text = text.replace("\\alpha", "阿尔法")
@@ -558,6 +552,14 @@ def _clean_latex(text: str) -> str:
     text = text.replace("\\,", "")
     text = text.replace("\\!", "")
     text = _re_latex.sub(r"\\\\", "", text)  # line breaks in LaTeX
+
+    # 11. 普通 ASCII 括号 → 不播报，删除（\text 等已在上一步清理，此时删括号不影响）
+    text = text.replace("(", "")
+    text = text.replace(")", "")
+    text = text.replace("[", "")
+    text = text.replace("]", "")
+    text = text.replace("{", "")
+    text = text.replace("}", "")
 
     # 防止连续拼音字母被 TTS 当成英文词读 (mc → "Em Cee")
     text = _re_latex.sub(r"([a-zA-Z])([a-zA-Z])([\u4e00-\u9fff\u7684])", r"\1 \2\3", text)

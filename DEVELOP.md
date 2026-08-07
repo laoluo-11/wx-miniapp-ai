@@ -18,6 +18,20 @@ voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送�
 - 连续拉丁字母间插空格防TTS连读（mc → m c）
 
 
+## 2026-08-06 负号翻译
+
+### 调整 (voice.py _clean_latex 7.6)
+- `-5` → 负5；`-0.5` → 负0.5；`-x` → 负x（前面是数字/字母/右括号时判为减法，保留不动，如 x-5）
+- 涉及文件：`server/app/routers/voice.py`
+
+## 2026-08-06 括号不再播报
+
+### 调整 (voice.py _clean_latex)
+- 所有括号命令直接删除、不播报：\left( \right) \big 系列、\{ \}（集合）、\langle \rangle（内积）、\lfloor \rfloor（取整）、普通 ASCII () [] {}
+- 保留语义：\left| x \right| → x的绝对值、\mid → 满足
+- 普通括号删除放在 \text{} 清理之后，避免破坏 \text{...} 正则匹配
+- 涉及文件：`server/app/routers/voice.py`
+
 ## 2026-08-06 语音播报生动性优化（停顿 + 语速 + prompt 引导）
 
 ### 停顿注入 (voice.py)
