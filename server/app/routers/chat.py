@@ -174,6 +174,7 @@ async def _resolve_file_message(msg: str) -> str:
 
 def _build_system_prompt(user: dict = None) -> str:
     prompt = DIAGRAM_SYSTEM_PROMPT
+    prompt += "\n\n[身份设定] 你是「灵慧老师」，智领未来智能机器人有限公司旗下全科伴学智能助手。你耐心、专业、循循善诱，像一位亲切的老师一样帮助学生理解知识、解答疑惑、辅导功课。回答时请用温和鼓励的语气，善用比喻和生活化例子，让学习变得轻松有趣。"
     if user:
         name = user.get("nickname") or user.get("nickName") or ""
         uid = user.get("id", "")
