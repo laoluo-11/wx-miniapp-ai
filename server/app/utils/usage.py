@@ -16,7 +16,7 @@ LIMITS = {
 
 
 def get_limit(role: str, metric: str) -> int:
-    """获取某角色的某操作每日限额"""
+    """获取某角色的某操作限额"""
     limits = LIMITS.get(metric)
     if not limits:
         return 999999
@@ -35,16 +35,26 @@ def track(user_id: int, metric: str):
 
 
 def check(user: dict, metric: str) -> bool:
-    """检查是否超限，返回 True=可继续"""
+    """检查是否超限，返回 True=可继续
+    普通用户：累计（总共N次，用完即止）
+    VIP用户：每日刷新
+    """
     limit = get_limit(user.get("role"), metric)
+    is_vip = user.get("role") == "vip"
     with get_db() as db:
         cur = db.cursor()
-        cur.execute(
-            "SELECT count FROM usage_stats WHERE user_id=%s AND metric=%s AND date=CURDATE()",
-            (user["id"], metric)
-        )
+        if is_vip:
+            cur.execute(
+                "SELECT count FROM usage_stats WHERE user_id=%s AND metric=%s AND date=CURDATE()",
+                (user["id"], metric)
+            )
+        else:
+            cur.execute(
+                "SELECT COALESCE(SUM(count), 0) AS count FROM usage_stats WHERE user_id=%s AND metric=%s",
+                (user["id"], metric)
+            )
         row = cur.fetchone()
-        current = row["count"] if row else 0
+        current = int(row["count"]) if row else 0
         return current < limit
 
 
@@ -60,7 +70,7 @@ def get_today(user_id: int) -> dict:
 
 
 def get_limits(role: str) -> dict:
-    """获取角色所有限额配置"""
+    """获取角色所有限额配置（普通用户为累计总次数、VIP为每日刷新）"""
     return {
         "chat":         LIMITS["chat"][1] if role == "vip" else LIMITS["chat"][0],
         "voice_assess": LIMITS["voice_assess"][1] if role == "vip" else LIMITS["voice_assess"][0],

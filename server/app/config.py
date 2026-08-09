@@ -43,7 +43,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123456")
 USE_INTENT_CLASSIFIER = os.getenv("USE_INTENT_CLASSIFIER", "false").lower() == "true"
 
 # 用量限额（用户 / 会员）
-USAGE_CHAT_USER = int(os.getenv("USAGE_CHAT_USER", "20"))
+USAGE_CHAT_USER = int(os.getenv("USAGE_CHAT_USER", "30"))
 USAGE_CHAT_VIP = int(os.getenv("USAGE_CHAT_VIP", "120"))
 USAGE_VOICE_USER = int(os.getenv("USAGE_VOICE_USER", "3"))
 USAGE_VOICE_VIP = int(os.getenv("USAGE_VOICE_VIP", "15"))
