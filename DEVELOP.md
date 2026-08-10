@@ -7,6 +7,18 @@
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
 
+## 2026-08-10 图片理解切换为 Qwen VL 直连
+
+### 问题
+OpenRouter API Key 失效导致图片理解（视觉描述）不可用。
+
+### 解决
+`_vision_call` 改用阿里云百炼 Qwen MaaS 直连（`qwen-vl-max`），本地下载图片转 base64 发送。
+`chat_stream`/`chat` 中的 `OPENROUTER_KEY` 检查替换为 `QWEN_API_KEY`。
+
+涉及文件：
+- `server/app/utils/llm_client.py` — _vision_call 重写 + 条件替换
+
 ## 2026-08-10 深度搜索降级修复
 
 ### 问题
