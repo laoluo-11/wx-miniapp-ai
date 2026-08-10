@@ -27,6 +27,26 @@ ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能�
 - `server/requirements.txt`
 
 
+## 2026-08-10 Phase 1.1 错题本（SM-2 间隔重复）
+
+实现完整的错题收录→复习闭环，用户可将 AI 对话中的问答加入错题本，按 SM-2 算法安排间隔复习。
+
+- **数据库**：新增 `mistake_books` 表（13 字段，含 interval_days/ease_factor/repetitions SM-2 算法列），索引 idx_user_review(user_id, next_review_at)
+- **新增 `app/models/mistake.py`**（~110 行）：数据层 — add/list_all/review_today/review_count/sm2_update/delete，使用 `with get_db() as db:` 模式（DictCursor）
+- **新增 `app/routers/mistake.py`**（~85 行）：5 个 API — POST /add, GET /review, GET /review-count, POST /{id}/rate, DELETE /{id}
+- **修改 `app/main.py`**：注册 mistake 路由
+- **SM-2 算法**：评分 1-5，≥3 分按 (ease, reps, interval) 计算下次复习（1→6→16→35天递增），<3 分重置为 1 天；ease 下限 1.3
+- 修复 get_db() context manager 误用（`db = get_db()` → `with get_db() as db:`）导致 500
+- 修复 pymysql DictCursor 双重 dict 转换 bug（`dict(zip(...))` 覆盖真实值）
+- 禁用 OpenClaw 网关（.env 注释 OPENCLAW_TOKEN），杀死占用 487MB 的 OpenClaw 进程，LLM 回退 deepseek-chat 直连
+- 修复 nginx /static/ 指向 Dev uploads（error_page 404 = @static_online 回退 Online）
+
+涉及文件：
+- `server/app/models/mistake.py`（新）
+- `server/app/routers/mistake.py`（新）
+- `server/app/main.py`
+- `server/.env`（注释 OpenClaw 配置）
+
 ## 2026-08-05 TTS公式语音清洗（方案E 正则）
 
 voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送阿里NLS前用Python正则将LaTeX公式转为口语化中文。
