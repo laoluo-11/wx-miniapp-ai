@@ -1,11 +1,23 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-10
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
+
+## 2026-08-10 深度搜索降级修复
+
+### 问题
+OpenRouter API Key 失效（401 "User not found"），深度搜索报错 `[Deep error: OpenRouter error 401: ...]`。
+
+### 解决
+`deep_agent.py` 重写：OpenRouter 调用失败时自动降级为普通 DeepSeek 对话（通过 `chat_stream`），不再抛异常。
+深度搜索按钮仍可用，只是联网搜索暂不可用（待新 API Key）。
+
+涉及文件：
+- `server/app/utils/deep_agent.py` — try/except 包裹 OpenRouter 调用，失败降级
 
 ## 2026-08-05 TTS公式语音清洗（方案E 正则）
 
