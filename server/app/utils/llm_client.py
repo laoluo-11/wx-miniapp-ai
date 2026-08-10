@@ -2,7 +2,8 @@ import httpx
 from app.config import (
     LLM_API_KEY, LLM_API_BASE, LLM_MODEL, SYSTEM_PROMPT,
     OPENCLAW_URL, OPENCLAW_TOKEN, OPENCLAW_MODEL,
-    OPENROUTER_KEY, VISION_MODEL
+    OPENROUTER_KEY, VISION_MODEL,
+    QWEN_API_KEY, QWEN_BASE_URL, QWEN_MODEL
 )
 import base64, re
 
@@ -54,11 +55,10 @@ async def _describe_images(messages: list) -> list:
 
 
 async def _vision_call(image_url: str, prompt: str) -> str:
-    """调用 OpenRouter 视觉模型描述图片"""
-    if not OPENROUTER_KEY:
+    if not QWEN_API_KEY:
         return ""
     payload = {
-        "model": VISION_MODEL,
+        "model": QWEN_MODEL,
         "messages": [{
             "role": "user",
             "content": [
@@ -69,20 +69,21 @@ async def _vision_call(image_url: str, prompt: str) -> str:
         "max_tokens": 200
     }
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Authorization": f"Bearer {QWEN_API_KEY}",
         "Content-Type": "application/json"
     }
     try:
         async with httpx.AsyncClient(timeout=30) as c:
             r = await c.post(
-                f"{OPENROUTER_BASE}/chat/completions",
+                f"{QWEN_BASE_URL}/chat/completions",
                 headers=headers, json=payload
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"]
-            print(f"[Vision] OpenRouter returned {r.status_code}")
+            print(f"[Vision] Qwen returned {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        print(f"[Vision] error: {e}")
+        print(f"[Vision] Qwen error: {e}")
+    return ""
     return ""
 
 
