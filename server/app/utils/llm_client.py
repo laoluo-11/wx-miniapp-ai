@@ -9,7 +9,7 @@ import base64, re
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 QWEN_VL_BASE = f"https://{QWEN_API_HOST}/compatible-mode/v1"
-QWEN_VL_MODEL = "qwen-vl-max"
+QWEN_VL_MODEL = "qwen3.5-omni-flash"
 
 
 def _has_image(messages: list) -> bool:
