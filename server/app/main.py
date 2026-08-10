@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from app.routers import auth, user, chat, voice, latex_proxy, admin
+from app.routers import auth, user, chat, voice, latex_proxy, admin, knowledge
 import os
 
 app = FastAPI(title="AI Chat API", version="1.0", docs_url=None, redoc_url=None)
@@ -15,7 +15,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 # User uploads mounted BEFORE /static to avoid prefix conflict
-RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
+RECEIVE_DIR = "/opt/wx-miniapp-ai-dev/receive"
 os.makedirs(RECEIVE_DIR, exist_ok=True)
 app.mount("/receive", StaticFiles(directory=RECEIVE_DIR), name="receive")
 
@@ -32,6 +32,7 @@ app.include_router(chat.router)
 app.include_router(voice.router)
 app.include_router(latex_proxy.router)
 app.include_router(admin.router)
+app.include_router(knowledge.router)
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
@@ -40,6 +41,13 @@ async def admin_page():
 
 @app.get("/")
 async def root(): return {"service": "AI Chat Server", "version": "1.0"}
+
+
+@app.on_event("startup")
+async def startup_rag():
+    """启动时初始化 RAG 知识库服务"""
+    from app.services.rag_service import RAGService
+    RAGService.initialize()
 
 @app.get("/health")
 async def health(): return {"status": "ok"}

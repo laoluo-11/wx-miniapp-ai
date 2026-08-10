@@ -1,10 +1,30 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-10
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-10 Phase 0 RAG 知识库底层搭建
+
+搭建基于 ChromaDB + BGE 的可复用向量检索引擎，为后续错题本/题库/资料库功能提供统一底座。
+
+- **技术选型**：ChromaDB 1.5.9（PersistentClient，本地持久化）+ BAAI/bge-small-zh-v1.5（512维，95MB）
+- **新增 `app/services/rag_service.py`**（~155行）：单例服务，封装 add/search/delete/count/delete_collection/list_collections，懒加载 embedding 模型
+- **新增 `app/routers/knowledge.py`**（~95行）：5个API端点 — GET /collections, GET /{collection}/count, POST /import, POST /search, DELETE /{collection}/{id}
+- **修改 `app/main.py`**：注册 knowledge 路由 + startup 事件初始化 RAGService + 修正 RECEIVE_DIR 为 dev 路径
+- **修改 `server/requirements.txt`**：新增 chromadb、sentence-transformers 依赖
+- 模型通过 hf-mirror.com 镜像下载（HF 直连被墙），bge-large 因内存不足降级为 bge-small
+- 停止未使用的 OpenClaw 进程（~487MB），为 bge 模型腾内存
+- 性能：1000条语义检索 ~250ms，metadata 过滤正常
+- 前端验证：微信开发者工具 wx.request 联调通过
+
+涉及文件：
+- `server/app/services/rag_service.py`（新）
+- `server/app/routers/knowledge.py`（新）
+- `server/app/main.py`
+- `server/requirements.txt`
 
 
 ## 2026-08-05 TTS公式语音清洗（方案E 正则）
