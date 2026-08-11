@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
 from app.utils.deep_agent import chat_deep, chat_deep_stream
+from app.services.rag_service import RAGService
 from app.utils.image_gen import generate_image
 from app.utils.svg_render import svg_save
 from app.utils.diagram_prompt import DIAGRAM_SYSTEM_PROMPT
@@ -186,6 +187,24 @@ def _build_system_prompt(user: dict = None) -> str:
 
 # ── Main send ──
 
+
+
+
+async def _get_rag_context(uid: int, query: str) -> str:
+    """从用户学习资料库检索相关内容"""
+    try:
+        results = RAGService.search("study_materials", query, top_k=3, where={"user_id": uid})
+        if not results:
+            return ""
+        ctx = "\n[用户上传的学习资料相关内容]\n"
+        for r in results:
+            ctx += f"- {r['metadata'].get('filename','')}: {r['text'][:300]}...\n"
+        return ctx + "请参考以上资料内容回答用户问题，如果资料不相关则忽略。\n"
+    except Exception:
+        return ""
+
+
+
 @router.post("/send")
 async def send(req: SendReq, user: dict = Depends(current_user)):
     uid = user["id"]
@@ -261,6 +280,9 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
             # Fallback: let LLM handle it
             print("[Intent:IMAGE] generate_image failed, falling back to LLM", flush=True)
 
+    # RAG: 检查用户是否有学习资料库
+    rag_context = await _get_rag_context(uid, messages[-1]["content"])
+
     async def generate():
         nonlocal title
         full_reply = ""
@@ -269,7 +291,10 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
 
         # Phase 1: Stream LLM (filter diagram blocks)
         try:
-            async for chunk in chat_stream(messages, uid=uid, system=_build_system_prompt(user)):
+            system_prompt = _build_system_prompt(user)
+            if rag_context:
+                system_prompt += rag_context
+            async for chunk in chat_stream(messages, uid=uid, system=system_prompt):
                 full_reply += chunk
                 buf += chunk
 

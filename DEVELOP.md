@@ -6,6 +6,26 @@
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
+## 2026-08-11 Phase 1.3 学习资料库（私有 RAG）
+
+用户上传 PDF/Word/TXT 学习资料 → 自动解析分段 → 向量化入库 → 聊天时自动检索注入上下文。
+
+- **安装依赖**：PyMuPDF 1.28 + python-docx 1.2
+- **数据库**：新增 `user_materials` 表（user_id/filename/file_url/chunks_count/status）
+- **新增 `app/services/material_parser.py`**：PDF(fitz)/Word(python-docx)/TXT 解析 → 512字符+128重叠滑动窗口分段
+- **新增 `app/models/material.py`**：资料 CRUD（add/update_status/list/delete）
+- **新增 `app/routers/material.py`**：3个API — POST /upload（文件接收+解析+向量化）, GET /list, DELETE /{id}
+- **修改 `app/routers/chat.py`**：`_get_rag_context()` 函数，发送消息前按 user_id 检索 ChromaDB `study_materials` 集合，top-3 结果注入 system prompt
+- **修改 `app/main.py`**：注册 material 路由
+- 修复 `@router.post` 装饰器误挂在帮手函数导致 422（`_get_rag_context` 插到装饰器与 send 之间）
+
+涉及文件：
+- `server/app/services/material_parser.py`（新）
+- `server/app/models/material.py`（新）
+- `server/app/routers/material.py`（新）
+- `server/app/routers/chat.py`
+- `server/app/main.py`
+
 ## 2026-08-10 Phase 1.2 分场景口语题库
 
 预置 4 个场景题库（K12口语考试/日常对话/职场英语/雅思托福），LLM 批量生成 24 道种子题，接入 RAG 语义检索。
