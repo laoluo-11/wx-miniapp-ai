@@ -52,6 +52,8 @@ class ChatReq(BaseModel):
     history: list | None = None
     voice: str = "Cherry"      # 音色：Cherry/Kai/Eric
     speed: float = 1.0         # 语速：0.8-1.5
+    question: str = ""         # 当前练习题目（可选）
+    character: str = "teacher"  # 对话人物：teacher/friend/examiner/colleague
 
 @router.post("/chat")
 async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
@@ -68,13 +70,15 @@ async def voice_chat(req: ChatReq, user: dict = Depends(current_user)):
                 history=req.history,
                 user_text=req.text or "",
                 voice=req.voice,
-                speed=req.speed
+                speed=req.speed,
+                question=req.question,
+                character=req.character
             )
         elif req.text:
             from app.utils.usage import track, check
             if not check(user, "speak"):
                 return {"text": "今日口语对练次数已用完", "history": req.history or []}
-            result = await chat_text_only(req.text, history=req.history, voice=req.voice, speed=req.speed)
+            result = await chat_text_only(req.text, history=req.history, voice=req.voice, speed=req.speed, question=req.question, character=req.character)
         else:
             return {"text": "", "history": req.history or [], "error": "请提供音频或文本"}
         

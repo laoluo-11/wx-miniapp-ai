@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from app.routers import auth, user, chat, voice, latex_proxy, admin, knowledge, mistake
+from app.routers import auth, user, chat, voice, latex_proxy, admin, knowledge, mistake, oral_question
 import os
 
 app = FastAPI(title="AI Chat API", version="1.0", docs_url=None, redoc_url=None)
@@ -34,6 +34,7 @@ app.include_router(latex_proxy.router)
 app.include_router(admin.router)
 app.include_router(knowledge.router)
 app.include_router(mistake.router)
+app.include_router(oral_question.router)
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():

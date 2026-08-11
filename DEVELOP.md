@@ -1,10 +1,30 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-10
+> 最后更新：2026-08-11
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-10 Phase 1.2 分场景口语题库
+
+预置 4 个场景题库（K12口语考试/日常对话/职场英语/雅思托福），LLM 批量生成 24 道种子题，接入 RAG 语义检索。
+
+- **数据库**：新增 `oral_question_banks`（4个场景分类）+ `oral_questions`（24道题，含 topic/difficulty/reference_answer/keywords）
+- **新增 `app/routers/oral_question.py`**：3 个 API — GET /banks, GET /questions（按bank_id/difficulty筛选）, GET /search（RAG语义搜索）
+- **修改 `app/main.py`**：注册 oral_question 路由
+- 种子题：调用 DeepSeek 生成（4场景×6题），入库 MariaDB + 向量化到 ChromaDB `oral_questions` 集合
+- **口语对练人物设定**：`qwen_omni.py` 新增 CHARACTER_PROMPTS（teacher/friend/examiner/colleague 4种口吻），`voice.py` ChatReq 加 character 字段
+- **练习题目注入**：`voice.py` + `qwen_omni.py` 支持 question 字段，AI 围绕当前题目引导对话
+- **评分输出**：SYSTEM_PROMPT 要求每条回复末尾输出 `口语评分：XX/100`，前端解析做平均分统计
+- 图片理解从 OpenRouter 切换为 Qwen 直连（OPENROUTER 失效），`_vision_call` 改用 QWEN_API_KEY/QWEN_BASE_URL/qwen3.5-omni-flash
+
+涉及文件：
+- `server/app/routers/oral_question.py`（新）
+- `server/app/routers/voice.py`
+- `server/app/utils/qwen_omni.py`
+- `server/app/utils/llm_client.py`
+- `server/app/main.py`
 
 ## 2026-08-10 Phase 0 RAG 知识库底层搭建
 
