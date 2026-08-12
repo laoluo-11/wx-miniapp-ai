@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Query, Header
+from fastapi import APIRouter, HTTPException, Query, Header, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel
+import tempfile, os as _os
 from app.config import ADMIN_PASSWORD
 from app.database import get_db
 import secrets, hashlib
@@ -286,3 +287,222 @@ async def admin_user_usage(uid: int, days: int = Query(7, ge=1, le=30), authoriz
             "GROUP BY metric", (uid, days)
         )
         return cur.fetchall()
+
+# ── 口语题库管理 ──
+
+from app.routers.oral_question import (
+    oral_create_bank, oral_update_bank, oral_delete_bank,
+    oral_create_question, oral_update_question, oral_delete_question
+)
+from pydantic import BaseModel
+
+class OralBankCreate(BaseModel):
+    name: str
+    icon: str = "📚"
+    description: str = ""
+    sort_order: int = 0
+
+class OralBankUpdate(BaseModel):
+    name: str | None = None
+    icon: str | None = None
+    description: str | None = None
+    sort_order: int | None = None
+
+class OralQuestionCreate(BaseModel):
+    bank_id: int
+    question: str
+    topic: str = ""
+    difficulty: int = 3
+    reference_answer: str = ""
+    keywords: str = ""
+
+class BatchDelete(BaseModel):
+    ids: list[int]
+
+class BatchDeleteKB(BaseModel):
+    ids: list[str]
+
+class OralQuestionUpdate(BaseModel):
+    question: str | None = None
+    topic: str | None = None
+    difficulty: int | None = None
+    reference_answer: str | None = None
+    keywords: str | None = None
+
+@router.get("/oral/banks")
+async def admin_oral_banks(authorization: str = Header(None)):
+    _verify_token(authorization)
+    with get_db() as db:
+        cur = db.cursor()
+        cur.execute("SELECT id, name, icon, description, sort_order FROM oral_question_banks ORDER BY sort_order")
+        banks = cur.fetchall()
+        for b in banks:
+            cur.execute("SELECT COUNT(*) as cnt FROM oral_questions WHERE bank_id=%s", (b["id"],))
+            b["question_count"] = cur.fetchone()["cnt"]
+        return {"banks": banks}
+
+@router.post("/oral/banks")
+async def admin_oral_create_bank(req: OralBankCreate, authorization: str = Header(None)):
+    _verify_token(authorization)
+    return oral_create_bank(req.name, req.icon, req.description, req.sort_order)
+
+@router.put("/oral/banks/{bank_id}")
+async def admin_oral_update_bank(bank_id: int, req: OralBankUpdate, authorization: str = Header(None)):
+    _verify_token(authorization)
+    kw = req.model_dump(exclude_none=True)
+    if not kw: raise HTTPException(400, "no fields")
+    if not oral_update_bank(bank_id, **kw): raise HTTPException(404, "not found")
+    return {"ok": True}
+
+@router.delete("/oral/banks/{bank_id}")
+async def admin_oral_delete_bank(bank_id: int, authorization: str = Header(None)):
+    _verify_token(authorization)
+    deleted = oral_delete_bank(bank_id)
+    return {"ok": True, "questions_deleted": deleted}
+
+@router.get("/oral/questions")
+async def admin_oral_questions(
+    bank_id: int = Query(None), limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0), authorization: str = Header(None)):
+    _verify_token(authorization)
+    with get_db() as db:
+        cur = db.cursor()
+        sql = "SELECT id, bank_id, topic, difficulty, question, reference_answer, keywords FROM oral_questions WHERE 1=1"
+        params = []
+        if bank_id: sql += " AND bank_id=%s"; params.append(bank_id)
+        sql += " ORDER BY id DESC LIMIT %s OFFSET %s"; params.extend([limit, offset])
+        cur.execute(sql, params)
+        return {"questions": cur.fetchall()}
+
+@router.post("/oral/questions")
+async def admin_oral_create_question(req: OralQuestionCreate, authorization: str = Header(None)):
+    _verify_token(authorization)
+    return oral_create_question(req.bank_id, req.question, req.topic, req.difficulty, req.reference_answer, req.keywords)
+
+@router.put("/oral/questions/{qid}")
+async def admin_oral_update_question(qid: int, req: OralQuestionUpdate, authorization: str = Header(None)):
+    _verify_token(authorization)
+    kw = req.model_dump(exclude_none=True)
+    if not kw: raise HTTPException(400, "no fields")
+    if not oral_update_question(qid, **kw): raise HTTPException(404, "not found")
+    return {"ok": True}
+
+@router.delete("/oral/questions/{qid}")
+async def admin_oral_delete_question(qid: int, authorization: str = Header(None)):
+    _verify_token(authorization)
+    if not oral_delete_question(qid): raise HTTPException(404, "not found")
+    return {"ok": True}
+
+@router.post("/oral/questions/batch-delete")
+async def admin_oral_batch_delete(req: BatchDelete, authorization: str = Header(None)):
+    _verify_token(authorization)
+    deleted = 0
+    for qid in req.ids:
+        if oral_delete_question(qid):
+            deleted += 1
+    return {"ok": True, "deleted": deleted}
+
+
+# ── 知识库管理 ──
+
+from app.services.rag_service import RAGService
+
+class KBImport(BaseModel):
+    text: str
+    metadata: dict = {}
+
+@router.get("/knowledge/collections")
+async def admin_kb_collections(authorization: str = Header(None)):
+    _verify_token(authorization)
+    return {"collections": RAGService.list_collections()}
+
+@router.get("/knowledge/{collection}/items")
+async def admin_kb_items(collection: str, limit: int = Query(100, ge=1, le=500),
+                          offset: int = Query(0, ge=0), authorization: str = Header(None)):
+    _verify_token(authorization)
+    return RAGService.list_items(collection, limit, offset)
+
+@router.post("/knowledge/{collection}/items")
+async def admin_kb_import(collection: str, items: list[KBImport], authorization: str = Header(None)):
+    _verify_token(authorization)
+    docs = [it.text for it in items]; metas = [it.metadata for it in items]
+    count = RAGService.add(collection, documents=docs, metadatas=metas)
+    return {"ok": True, "imported": count}
+
+@router.delete("/knowledge/{collection}/{item_id}")
+async def admin_kb_delete_item(collection: str, item_id: str, authorization: str = Header(None)):
+    _verify_token(authorization)
+    RAGService.delete(collection, [item_id])
+    return {"ok": True}
+
+@router.post("/knowledge/{collection}/batch-delete")
+async def admin_kb_batch_delete(collection: str, req: BatchDeleteKB, authorization: str = Header(None)):
+    _verify_token(authorization)
+    if req.ids:
+        RAGService.delete(collection, req.ids)
+    return {"ok": True, "deleted": len(req.ids)}
+
+@router.post("/knowledge/{collection}/create")
+async def admin_kb_create_collection(collection: str, authorization: str = Header(None)):
+    _verify_token(authorization)
+    import uuid
+    dummy_id = str(uuid.uuid4())
+    try:
+        RAGService.add(collection, documents=["_init_"], metadatas=[{"_dummy": True}], ids=[dummy_id])
+        RAGService.delete(collection, [dummy_id])
+        return {"ok": True, "collection": collection}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@router.delete("/knowledge/{collection}")
+async def admin_kb_delete_collection(collection: str, authorization: str = Header(None)):
+    _verify_token(authorization)
+    if not RAGService.delete_collection(collection): raise HTTPException(404, "cannot delete")
+    return {"ok": True}
+
+@router.post("/knowledge/{collection}/search")
+async def admin_kb_search(collection: str, query: str = Query(...),
+                           top_k: int = Query(10, ge=1, le=50), authorization: str = Header(None)):
+    _verify_token(authorization)
+    results = RAGService.search(collection, query, top_k=top_k)
+    return {"collection": collection, "query": query, "results": results}
+
+@router.post("/knowledge/{collection}/upload")
+async def admin_kb_upload(collection: str, bg: BackgroundTasks,
+                           file: UploadFile = File(...), authorization: str = Header(None)):
+    _verify_token(authorization)
+    from app.services.material_parser import parse_file
+    suffix = _os.path.splitext(file.filename or "doc.txt")[1] or ".txt"
+    bytes_data = await file.read()
+    fname = file.filename or "upload"+suffix
+
+    # Parse synchronously (fast, no embedding)
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(bytes_data)
+        tmp_path = tmp.name
+    try:
+        chunks = parse_file(tmp_path, fname)
+    finally:
+        try: _os.unlink(tmp_path)
+        except: pass
+
+    if not chunks:
+        raise HTTPException(400, "no content extracted")
+
+    # Embedding + ChromaDB in background (slow - BGE model CPU)
+    metas = [{"source": fname, "chunk_index": i} for i in range(len(chunks))]
+    bg.add_task(_do_embed, collection, chunks, metas, fname)
+
+    return {"ok": True, "filename": fname, "chunks": len(chunks),
+            "collection": collection, "status": "processing"}
+
+def _do_embed(collection: str, chunks: list, metas: list, fname: str):
+    """Background: embed + insert into ChromaDB"""
+    try:
+        RAGService.add(collection, documents=chunks, metadatas=metas)
+        logger = __import__("logging").getLogger(__name__)
+        logger.info("KB upload done: %s -> %s, %d chunks", fname, collection, len(chunks))
+    except Exception as e:
+        logger = __import__("logging").getLogger(__name__)
+        logger.error("KB upload failed: %s -> %s: %s", fname, collection, e)
+

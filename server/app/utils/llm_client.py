@@ -3,7 +3,7 @@ from app.config import (
     LLM_API_KEY, LLM_API_BASE, LLM_MODEL, SYSTEM_PROMPT,
     OPENCLAW_URL, OPENCLAW_TOKEN, OPENCLAW_MODEL,
     OPENROUTER_KEY, VISION_MODEL,
-    QWEN_API_KEY, QWEN_API_HOST
+    QWEN_API_KEY, QWEN_BASE_URL, QWEN_MODEL, QWEN_API_HOST
 )
 import base64, re
 
@@ -57,7 +57,6 @@ async def _describe_images(messages: list) -> list:
 
 
 async def _vision_call(image_url: str, prompt: str) -> str:
-    """Qwen VL 视觉模型描述图片"""
     if not QWEN_API_KEY:
         return ""
     import base64 as _b64
@@ -71,23 +70,32 @@ async def _vision_call(image_url: str, prompt: str) -> str:
         except Exception:
             pass
     payload = {
-        "model": QWEN_VL_MODEL,
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": img_data}}
-        ]}],
+        "model": QWEN_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_url}}
+            ]
+        }],
         "max_tokens": 200
+    }
+    headers = {
+        "Authorization": f"Bearer {QWEN_API_KEY}",
+        "Content-Type": "application/json"
     }
     try:
         async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(f"{QWEN_VL_BASE}/chat/completions",
-                headers={"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"},
-                json=payload)
+            r = await c.post(
+                f"{QWEN_BASE_URL}/chat/completions",
+                headers=headers, json=payload
+            )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"]
-            print(f"[Vision] Qwen {r.status_code}: {r.text[:200]}")
+            print(f"[Vision] Qwen returned {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        print(f"[Vision] error: {e}")
+        print(f"[Vision] Qwen error: {e}")
+    return ""
     return ""
 
 async def _call_llm(messages: list, model: str, system: str,
