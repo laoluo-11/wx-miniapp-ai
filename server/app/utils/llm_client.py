@@ -8,6 +8,8 @@ from app.config import (
 import base64, re
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+QWEN_VL_BASE = f"https://{QWEN_API_HOST}/compatible-mode/v1"
+QWEN_VL_MODEL = "qwen3.5-omni-flash"
 
 
 def _has_image(messages: list) -> bool:
@@ -57,6 +59,16 @@ async def _describe_images(messages: list) -> list:
 async def _vision_call(image_url: str, prompt: str) -> str:
     if not QWEN_API_KEY:
         return ""
+    import base64 as _b64
+    img_data = image_url
+    if image_url.startswith("http"):
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(image_url)
+                if r.status_code == 200:
+                    img_data = f"data:image/png;base64,{_b64.b64encode(r.content).decode()}"
+        except Exception:
+            pass
     payload = {
         "model": QWEN_MODEL,
         "messages": [{
@@ -85,7 +97,6 @@ async def _vision_call(image_url: str, prompt: str) -> str:
         print(f"[Vision] Qwen error: {e}")
     return ""
     return ""
-
 
 async def _call_llm(messages: list, model: str, system: str,
                     temperature: float, max_tokens: int, timeout: float) -> str:
@@ -189,7 +200,7 @@ async def _call_llm_stream(messages: list, model: str, system: str,
 
 async def chat(messages: list, uid: int = None, model: str = None, system: str = None) -> str:
     """发送聊天请求。自动检测图片并用视觉模型预处理。"""
-    if _has_image(messages) and OPENROUTER_KEY:
+    if _has_image(messages) and QWEN_API_KEY:
         messages = await _describe_images(messages)
 
     system = system or SYSTEM_PROMPT
@@ -227,7 +238,7 @@ async def gen_title(first_msg: str, uid: int = None, reply: str = None) -> str:
 
 async def chat_stream(messages: list, uid: int = None, model: str = None, system: str = None):
     """流式聊天：逐 token 推送。自动检测图片并用视觉模型预处理。"""
-    if _has_image(messages) and OPENROUTER_KEY:
+    if _has_image(messages) and QWEN_API_KEY:
         messages = await _describe_images(messages)
 
     system = system or SYSTEM_PROMPT

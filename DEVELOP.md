@@ -98,6 +98,30 @@ OpenRouter API Key 失效（401 "User not found"），深度搜索报错 `[Deep 
 涉及文件：
 - `server/app/utils/deep_agent.py` — try/except 包裹 OpenRouter 调用，失败降级
 
+## 2026-08-10 图片理解切换为 Qwen VL 直连
+
+### 问题
+OpenRouter API Key 失效导致图片理解（视觉描述）不可用。
+
+### 解决
+`_vision_call` 改用阿里云百炼 Qwen MaaS 直连（`qwen-vl-max`），本地下载图片转 base64 发送。
+`chat_stream`/`chat` 中的 `OPENROUTER_KEY` 检查替换为 `QWEN_API_KEY`。
+
+涉及文件：
+- `server/app/utils/llm_client.py` — _vision_call 重写 + 条件替换
+
+## 2026-08-10 深度搜索降级修复
+
+### 问题
+OpenRouter API Key 失效（401 "User not found"），深度搜索报错 `[Deep error: OpenRouter error 401: ...]`。
+
+### 解决
+`deep_agent.py` 重写：OpenRouter 调用失败时自动降级为普通 DeepSeek 对话（通过 `chat_stream`），不再抛异常。
+深度搜索按钮仍可用，只是联网搜索暂不可用（待新 API Key）。
+
+涉及文件：
+- `server/app/utils/deep_agent.py` — try/except 包裹 OpenRouter 调用，失败降级
+
 ## 2026-08-05 TTS公式语音清洗（方案E 正则）
 
 voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送阿里NLS前用Python正则将LaTeX公式转为口语化中文。
