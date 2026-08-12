@@ -301,6 +301,7 @@ class OralBankCreate(BaseModel):
     icon: str = "📚"
     description: str = ""
     sort_order: int = 0
+    type: str = "oral"
 
 class OralBankUpdate(BaseModel):
     name: str | None = None
@@ -334,7 +335,7 @@ async def admin_oral_banks(authorization: str = Header(None)):
     _verify_token(authorization)
     with get_db() as db:
         cur = db.cursor()
-        cur.execute("SELECT id, name, icon, description, sort_order FROM oral_question_banks ORDER BY sort_order")
+        cur.execute("SELECT id, name, icon, description, sort_order, type FROM oral_question_banks ORDER BY sort_order")
         banks = cur.fetchall()
         for b in banks:
             cur.execute("SELECT COUNT(*) as cnt FROM oral_questions WHERE bank_id=%s", (b["id"],))
@@ -344,7 +345,7 @@ async def admin_oral_banks(authorization: str = Header(None)):
 @router.post("/oral/banks")
 async def admin_oral_create_bank(req: OralBankCreate, authorization: str = Header(None)):
     _verify_token(authorization)
-    return oral_create_bank(req.name, req.icon, req.description, req.sort_order)
+    return oral_create_bank(req.name, req.icon, req.description, req.sort_order, req.type)
 
 @router.put("/oral/banks/{bank_id}")
 async def admin_oral_update_bank(bank_id: int, req: OralBankUpdate, authorization: str = Header(None)):
