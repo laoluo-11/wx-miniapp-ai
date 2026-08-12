@@ -148,6 +148,30 @@ class RAGService:
             logger.warning(f"Failed to delete collection '{collection_name}': {e}")
             return False
 
+
+    @classmethod
+    def list_items(cls, collection_name: str, limit: int = 100, offset: int = 0) -> dict:
+        """分页列出集合中的文档 {total, items: [{id, text, metadata}]}"""
+        collection = cls._get_collection(collection_name)
+        total = collection.count()
+        if total == 0:
+            return {"total": 0, "items": []}
+        results = collection.get(
+            limit=limit,
+            offset=offset,
+            include=["documents", "metadatas"],
+        )
+        items = []
+        if results["ids"]:
+            for i in range(len(results["ids"])):
+                items.append({
+                    "id": results["ids"][i],
+                    "text": results["documents"][i] if results["documents"] else "",
+                    "metadata": results["metadatas"][i] if results["metadatas"] else {},
+                })
+        return {"total": total, "items": items}
+
+
     @classmethod
     def list_collections(cls) -> list[str]:
         """列出所有集合"""

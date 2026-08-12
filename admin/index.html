@@ -11,15 +11,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background
 .page.visible{display:block}
 .login-box{max-width:360px;margin:30vh auto;background:#fff;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.08)}
 .login-box h1{font-size:24px;margin-bottom:24px;color:#07c160}
-input{width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:8px;font-size:15px;margin-bottom:16px;outline:none}
-input:focus{border-color:#07c160}
+input,textarea,select{width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;margin-bottom:12px;outline:none;font-family:inherit}
+input:focus,textarea:focus,select:focus{border-color:#07c160}
+textarea{resize:vertical;min-height:80px}
 button{padding:8px 18px;background:#07c160;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
 button:hover{background:#06ad56}
+button.dgr{background:#e64340}
+button.dgr:hover{background:#d32f2f}
+button.gry{background:#999}
+button.gry:hover{background:#777}
+button.sm{padding:4px 10px;font-size:12px;border-radius:4px}
+button:disabled{opacity:.5;cursor:not-allowed}
 .card{background:#fff;border-radius:10px;padding:20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{background:#f9f9f9;padding:10px 12px;text-align:left;font-size:13px;color:#666;border-bottom:1px solid #eee}
-td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
-.hidden{display:none}
+td{padding:10px 12px;border-bottom:1px solid #e8e8e8;font-size:13px;vertical-align:top}
+tr:hover td{background:#f6fff9}
+tr:nth-child(even) td{background:#fafafa}
+tr:nth-child(even):hover td{background:#f6fff9}
+tr.sel td{background:#e8f8ef!important}
+.hidden{display:none!important}
 .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px}
 .stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
 .stat-item{text-align:center;padding:16px;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
@@ -44,9 +55,33 @@ td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
 .btn{padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;border:none;display:inline-block;margin:1px;background:#f2f2f2;color:#666}
 .btn-pri{background:#07c160;color:#fff}
 .btn-dgr{background:#e64340;color:#fff}
+.split-pane{display:flex;gap:20px}
+.split-left{width:260px;flex-shrink:0}
+.split-right{flex:1;min-width:0}
+.bank-item{padding:12px 16px;border-radius:8px;margin-bottom:8px;cursor:pointer;background:#fafafa;border:1px solid #eee;transition:all .15s}
+.bank-item:hover{background:#f0f0f0}
+.bank-item.sel{background:#e8f8ef;border-color:#07c160;color:#07c160}
+.bank-item .bname{font-size:14px;font-weight:500}
+.bank-item .binfo{font-size:11px;color:#999;margin-top:4px}
+.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal-box{background:#fff;border-radius:12px;padding:24px;width:480px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal-box h3{margin-bottom:16px;font-size:18px}
+.modal-box label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+.inline-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.inline-row input,.inline-row select{flex:1;margin-bottom:0}
+.kb-coll{display:inline-block;padding:6px 14px;background:#f0f0f0;border-radius:16px;cursor:pointer;margin:4px 6px 4px 0;font-size:13px}
+.kb-coll:hover{background:#e0e0e0}
+.kb-coll.sel{background:#e8f8ef;color:#07c160;font-weight:600}
+.chk{width:16px;height:16px;cursor:pointer;accent-color:#07c160}
+.pager{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;font-size:13px;color:#666}
+.pager span,.pager button{padding:4px 10px;border-radius:4px;font-size:12px}
+.pager .pg-num{background:#f0f0f0;cursor:pointer;min-width:28px;text-align:center}
+.pager .pg-num.act{background:#07c160;color:#fff}
+.batch-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fffbe6;border:1px solid #ffe58f;border-radius:8px;margin-bottom:8px;font-size:13px}
 </style>
 </head>
 <body>
+
 <div class="page visible" id=pgLogin>
 <div class=login-box>
 <h1>ZLWL 管理后台</h1>
@@ -55,8 +90,17 @@ td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
 <button id=loginBtn>登录</button>
 </div>
 </div>
+
 <div class=page id=pgApp>
-<div class=row><h2>ZLWL 管理后台</h2><button id=logoutBtn>退出</button></div>
+<div class=row style=margin-bottom:12px>
+<h2>ZLWL 管理后台</h2>
+<div class=tab-bar id=mainTabs style=margin-bottom:0;border-bottom:0>
+<span class="tab act" data-pg=users>用户管理</span>
+<span class=tab data-pg=oral>题库管理</span>
+<span class=tab data-pg=kb>知识库</span>
+</div>
+<button class=gry id=logoutBtn>退出</button>
+</div>
 <div class=stat-grid id=statsGrid>
 <div class=stat-item><div class=stat-num>--</div><div class=stat-label>用户</div></div>
 <div class=stat-item><div class=stat-num>--</div><div class=stat-label>对话</div></div>
@@ -65,60 +109,117 @@ td{padding:10px 12px;border-top:1px solid #f5f5f5;font-size:13px}
 <div class=stat-item><div class=stat-num>--</div><div class=stat-label>记忆</div></div>
 <div class=stat-item><div class=stat-num>--</div><div class=stat-label>文件</div></div>
 </div>
+
+<div id=pgUsers>
 <div class=card id=pnUsers>
 <div class=row><h3>用户管理</h3><input type=text id=searchIn placeholder="搜索..." style=width:200px><button id=searchBtn>搜索</button></div>
 <div id=usrTable></div></div>
 <div class="card hidden" id=pnDetail>
 <span id=backBtn class=back>← 返回</span><h3 id=detailName></h3>
 <div class=tab-bar id=tabBar>
-<span class="tab act" data-tab=convs>对话</span>
-<span class=tab data-tab=assess>评测</span>
-<span class=tab data-tab=mems>记忆</span>
-<span class=tab data-tab=files>文件</span>
-<span class=tab data-tab=usage>用量</span>
+<span class="tab act" data-tab=convs>对话</span><span class=tab data-tab=assess>评测</span><span class=tab data-tab=mems>记忆</span><span class=tab data-tab=files>文件</span><span class=tab data-tab=usage>用量</span>
 </div>
-<div id=tConvs></div>
-<div id=tAssess class=hidden></div>
-<div id=tMems class=hidden></div>
-<div id=tFiles class=hidden></div>
-<div id=tUsage class=hidden></div></div>
+<div id=tConvs></div><div id=tAssess class=hidden></div><div id=tMems class=hidden></div><div id=tFiles class=hidden></div><div id=tUsage class=hidden></div></div>
 <div class="card hidden" id=pnMsgs>
 <span id=backBtn2 class=back>← 返回</span>
 <div class=row><h3 id=msgTitle></h3><button id=delConvBtn class="btn btn-dgr">删除</button></div>
-<div id=msgList style="max-height:500px;overflow-y:auto;padding:12px;background:#fafafa;border-radius:8px"></div></div></div>
+<div id=msgList style=max-height:500px;overflow-y:auto;padding:12px;background:#fafafa;border-radius:8px></div></div>
+</div>
+
+<div id=pgOral class=hidden>
+<div class=split-pane>
+<div class=split-left>
+<div class=card style=padding:16px>
+<div class=row style=margin-bottom:12px><strong>题库分类</strong></div>
+<div id=bankList></div>
+<button id=addBankBtn class=gry style=width:100%;margin-top:8px>+ 新建题库</button>
+</div>
+</div>
+<div class=split-right>
+<div class=card style=padding:16px>
+<div class=row><h3 id=qBankTitle>选择题库查看题目</h3><button id=addQBtn class="btn btn-pri hidden">+ 添加题目</button></div>
+<div id=qBatchBar class="batch-bar hidden"><span id=qBatchCount>已选 0 项</span><button class="btn btn-dgr" id=qBatchDel>删除选中</button><button class=btn id=qBatchCancel>取消选择</button></div>
+<table id=qTable>
+<thead><tr><th style=width:36px><input type=checkbox class=chk id=qCheckAll></th><th style=width:50px>ID</th><th>题目</th><th style=width:100px>难度</th><th style=width:70px>话题</th><th style=width:110px>操作</th></tr></thead>
+<tbody id=qBody></tbody>
+</table>
+<div class=pager id=qPager></div>
+</div>
+</div>
+</div>
+</div>
+
+<div id=pgKB class=hidden>
+<div class=card>
+<div class=row><h3>知识库管理</h3><div><button id=newCollBtn>+ 新建集合</button> <button id=refreshKBBtn>刷新</button></div></div>
+<div id=kbColls style=margin-bottom:12px></div>
+<div class=row id=kbActions class=hidden>
+<input type=text id=kbSearch placeholder="搜索知识库..." style=flex:1>
+<button id=kbSearchBtn>搜索</button>
+<button id=kbUploadBtn>📄 上传文档</button> <button id=kbAddBtn>+ 添加知识</button>
+<button class=dgr id=kbDelCollBtn>删除集合</button>
+</div>
+<input type=file id=kbFileInput class=hidden accept=".pdf,.docx,.doc,.txt,.md" onchange="uploadKBFile(this)">
+<div id=kbBatchBar class="batch-bar hidden"><span id=kbBatchCount>已选 0 项</span><button class="btn btn-dgr" id=kbBatchDel>删除选中</button><button class=btn id=kbBatchCancel>取消选择</button></div>
+<table id=kbTable class=hidden>
+<thead><tr><th style=width:36px><input type=checkbox class=chk id=kbCheckAll></th><th style=width:80px>ID</th><th>内容</th><th style=width:100px>来源</th><th style=width:60px>操作</th></tr></thead>
+<tbody id=kbBody></tbody>
+</table>
+<div class=pager id=kbPager></div>
+</div>
+</div>
+
+<div class="modal-bg hidden" id=modalBg><div class=modal-box id=modalBox></div></div>
+</div>
+
 <script>
-var T=null,U=null,C=null
+var T=localStorage.getItem('adminToken')||null,U=null,C=null,curBank=null,curKB=null
+var B=window.location.pathname.indexOf('/dev/')===0?'/dev':''
+var qPage=0,qTotal=0,qSel={},qPAGE_SIZE=30
+var kbPage=0,kbTotal=0,kbSel={},kbPAGE_SIZE=30
 var E=document.getElementById.bind(document)
 var labels={users:'用户',conversations:'对话',messages:'消息',assessments:'评测',memories:'记忆',files:'文件'}
 var mlabels={chat:'AI对话',voice_assess:'语音评测',speak:'口语对练',upload:'文件上传'}
+var diffLabels={1:'⭐ 入门',2:'⭐⭐ 基础',3:'⭐⭐⭐ 中级',4:'⭐⭐⭐⭐ 进阶',5:'⭐⭐⭐⭐⭐ 高级'}
 
 function api(m,u,b,cb){
   if(!T)return
   var x=new XMLHttpRequest()
-  x.open(m||'GET','/api/v1/admin'+u)
+  x.open(m||'GET',B+'/api/v1/admin'+u)
   x.setRequestHeader('Authorization','Bearer '+T)
   x.onload=function(){if(x.status===200&&cb)cb(JSON.parse(x.responseText))}
   if(b){x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(b))}else x.send()
 }
-function esc(s){return s||'-'}
+function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):'-'}
 
 E('loginBtn').onclick=function(){
   E('loginErr').textContent=''
   var x=new XMLHttpRequest()
-  x.open('POST','/api/v1/admin/login')
+  x.open('POST',B+'/api/v1/admin/login')
   x.setRequestHeader('Content-Type','application/json')
   x.onload=function(){
     if(x.status!==200){try{E('loginErr').textContent=JSON.parse(x.responseText).message}catch(e){E('loginErr').textContent='请求失败'};return}
     var d=JSON.parse(x.responseText)
-    if(d.token){T=d.token;E('pgLogin').classList.remove('visible');E('pgApp').classList.add('visible');loadS();loadU()}
+    if(d.token){T=d.token;try{localStorage.setItem('adminToken',d.token)}catch(e){}E('pgLogin').classList.remove('visible');E('pgApp').classList.add('visible');loadS();loadU()}
     else E('loginErr').textContent='登录失败'
   }
   x.onerror=function(){E('loginErr').textContent='网络错误'}
   x.send(JSON.stringify({password:E('pwd').value}))
 }
 E('pwd').onkeydown=function(e){if(e.key==='Enter')E('loginBtn').click()}
-E('logoutBtn').onclick=function(){T=null;E('pgApp').classList.remove('visible');E('pgLogin').classList.add('visible')}
+E('logoutBtn').onclick=function(){T=null;try{localStorage.removeItem('adminToken')}catch(e){}E('pgApp').classList.remove('visible');E('pgLogin').classList.add('visible')}
 E('searchBtn').onclick=loadU
+if(T){E('pgLogin').classList.remove('visible');E('pgApp').classList.add('visible');loadS();loadU()}
+
+E('mainTabs').onclick=function(e){
+  if(!e.target.classList.contains('tab'))return
+  var pg=e.target.dataset.pg
+  document.querySelectorAll('#mainTabs .tab').forEach(function(t){t.classList.toggle('act',t.dataset.pg===pg)})
+  document.querySelectorAll('#pgUsers,#pgOral,#pgKB').forEach(function(p){p.classList.add('hidden')})
+  if(pg==='users'){E('pgUsers').classList.remove('hidden')}
+  else if(pg==='oral'){E('pgOral').classList.remove('hidden');loadBanks()}
+  else if(pg==='kb'){E('pgKB').classList.remove('hidden');loadKBCols()}
+}
 
 function loadS(){
   api('GET','/stats',null,function(d){
@@ -128,6 +229,7 @@ function loadS(){
   })
 }
 
+// ============ 用户管理 ============
 function loadU(){
   var q=E('searchIn').value
   api('GET','/users?limit=50'+(q?'&search='+encodeURIComponent(q):''),null,function(d){
@@ -139,7 +241,6 @@ function loadU(){
     h+='</table>';E('usrTable').innerHTML=h||'<div class=emp>暂无用户</div>'
   })
 }
-
 function viewU(uid){U=uid;E('pnUsers').classList.add('hidden');E('pnMsgs').classList.add('hidden');E('pnDetail').classList.remove('hidden')
 var divs=document.querySelectorAll('#tConvs,#tAssess,#tMems,#tFiles,#tUsage');for(var i=0;i<divs.length;i++){divs[i].classList.add('hidden');divs[i].innerHTML=''}
 var tabs=document.querySelectorAll('#tabBar .tab');for(var j=0;j<tabs.length;j++){tabs[j].classList.toggle('act',j===0)}
@@ -147,118 +248,309 @@ E('tConvs').classList.remove('hidden');loadConv()}
 function backU(){E('pnDetail').classList.add('hidden');E('pnUsers').classList.remove('hidden')}
 function backD(){E('pnMsgs').classList.add('hidden');E('pnDetail').classList.remove('hidden')}
 E('backBtn').onclick=backU;E('backBtn2').onclick=backD
-
 function editU(uid){
   api('GET','/users/'+uid,null,function(u){
-    var n=prompt('昵称:',u.nickname||'')
-    if(n===null)return
-    var p=prompt('手机号:',u.phone||'')
-    if(p===null)return
+    var n=prompt('昵称:',u.nickname||'');if(n===null)return
+    var p=prompt('手机号:',u.phone||'');if(p===null)return
     var b={};if(n!==u.nickname)b.nickname=n;if(p!==u.phone)b.phone=p
     if(Object.keys(b).length)api('PUT','/users/'+uid,b,loadU)
   })
 }
 function vipU(uid){
   api('GET','/users/'+uid,null,function(u){
-    var d=prompt('VIP天数 (0=取消, -1=永久):',u.role==='vip'?'30':'30')
-    if(d===null)return;d=parseInt(d)
-    api('PUT','/users/'+uid,{role:d<0?'vip':d>0?'vip':'user',vip_days:d>0?d:d<0?36500:0},function(){loadU();alert('已更新，刷新查看')})
+    var d=prompt('VIP天数 (0=取消, -1=永久):',u.role==='vip'?'30':'30');if(d===null)return;d=parseInt(d)
+    api('PUT','/users/'+uid,{role:d<0?'vip':d>0?'vip':'user',vip_days:d>0?d:d<0?36500:0},function(){loadU();alert('已更新')})
   })
 }
 function delU(uid){if(confirm('确定删除？'))api('DELETE','/users/'+uid,null,loadU)}
-
-// Tab switching
 E('tabBar').onclick=function(e){
   if(!e.target.classList.contains('tab'))return
   var t=e.target.dataset.tab
-  var tabs=document.querySelectorAll('#tabBar .tab');for(var i=0;i<tabs.length;i++){tabs[i].classList.toggle('act',tabs[i].dataset.tab===t)}
-  var divs=document.querySelectorAll('#tConvs,#tAssess,#tMems,#tFiles,#tUsage');for(var i=0;i<divs.length;i++){divs[i].classList.add('hidden')}
+  document.querySelectorAll('#tabBar .tab').forEach(function(x){x.classList.toggle('act',x.dataset.tab===t)})
+  document.querySelectorAll('#tConvs,#tAssess,#tMems,#tFiles,#tUsage').forEach(function(x){x.classList.add('hidden')})
   switchT(t)
 }
-function switchT(tab){
-  var cap='t'+tab.charAt(0).toUpperCase()+tab.slice(1)
-  E(cap).classList.remove('hidden')
-  if(tab==='convs')loadConv()
-  else if(tab==='assess')loadAss()
-  else if(tab==='mems')loadMem()
-  else if(tab==='files')loadFil()
-  else if(tab==='usage')loadUsg()
+function switchT(tab){E('t'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.remove('hidden')
+  if(tab==='convs')loadConv();else if(tab==='assess')loadAss();else if(tab==='mems')loadMem();else if(tab==='files')loadFil();else if(tab==='usage')loadUsg()
 }
-
-function loadConv(){
-  E('tConvs').innerHTML='<div class=emp>加载中...</div>'
+function loadConv(){E('tConvs').innerHTML='<div class=emp>加载中...</div>'
   api('GET','/users/'+U+'/conversations',null,function(list){
     if(!list||!list.length){E('tConvs').innerHTML='<div class=emp>暂无对话</div>';return}
-    var h=''
-    for(var i=0;i<list.length;i++){var c=list[i]
+    var h='';for(var i=0;i<list.length;i++){var c=list[i]
       h+='<div class=item onclick="showM('+c.id+')"><div class=item-t>'+(c.title||'未命名')+'</div><div class=item-m>'+c.msg_count+'条</div></div>'}
-    E('tConvs').innerHTML=h
-  })
-}
+    E('tConvs').innerHTML=h})}
 function showM(cid){C=cid;E('pnDetail').classList.add('hidden');E('pnMsgs').classList.remove('hidden')
   E('msgList').innerHTML='<div class=emp>加载中...</div>'
   api('GET','/conversations/'+cid+'/messages?limit=200',null,function(msgs){
     if(!msgs||!msgs.length){E('msgList').innerHTML='<div class=emp>暂无消息</div>';return}
-    var h=''
-    for(var i=0;i<msgs.length;i++){var m=msgs[i],cls=m.role==='user'?'bub-user':'bub-ai'
-      var body=''
-      var c=m.content||''
+    var h='';for(var i=0;i<msgs.length;i++){var m=msgs[i],cls=m.role==='user'?'bub-user':'bub-ai',body='',c=m.content||''
       var isImg=/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i.test(c)||c.indexOf('/receive/')>=0&&/\.(jpg|jpeg|png|gif|webp|svg)/i.test(c)
       if(isImg){body='<a href="'+c+'" target=_blank><img src="'+c+'" style=max-width:200px;max-height:150px;border-radius:6px;display:block></a>'}
-      else{body=(m.role==='user'?'<span class="tag tg-user">用户</span>':'<span class="tag tg-ai">AI</span>')+c}
+      else{body=(m.role==='user'?'<span class="tag tg-user">用户</span>':'<span class="tag tg-ai">AI</span>')+esc(c)}
       h+='<div style=display:flex;flex-direction:column><div class="'+cls+'">'+body+'<div style=font-size:10px;color:#aaa;margin-top:3px>'+((m.time||'').substring(0,19))+'</div></div></div>'}
-    E('msgList').innerHTML=h
-  })
-}
+    E('msgList').innerHTML=h})}
 E('delConvBtn').onclick=function(){if(!C||!confirm('删除？'))return;api('DELETE','/conversations/'+C,null,function(){backD();loadConv()})}
-
-function loadAss(){
-  E('tAssess').innerHTML='<div class=emp>加载中...</div>'
+function loadAss(){E('tAssess').innerHTML='<div class=emp>加载中...</div>'
   api('GET','/users/'+U+'/assessments',null,function(list){
     if(!list||!list.length){E('tAssess').innerHTML='<div class=emp>暂无评测</div>';return}
-    var h=''
-    for(var i=0;i<list.length;i++){var a=list[i]
+    var h='';for(var i=0;i<list.length;i++){var a=list[i]
       h+='<div class=item><div class=item-t>总分:'+(a.score||0)+' 准确:'+(a.accuracy||0)+' 流利:'+(a.fluency||0)+' 完整:'+(a.integrity||0)+' 标准:'+(a.standard||0)+'</div><div class=item-m>'+(a.text||'').substring(0,200)+'</div><div class=item-m>'+(a.created_at||'')+'</div><button class="btn btn-dgr" onclick="delAs('+a.id+')">删除</button></div>'}
-    E('tAssess').innerHTML=h
-  })
-}
+    E('tAssess').innerHTML=h})}
 function delAs(id){if(!confirm('删除？'))return;api('DELETE','/assessments/'+id,null,loadAss)}
-
-function loadMem(){
-  E('tMems').innerHTML='<div class=emp>加载中...</div>'
+function loadMem(){E('tMems').innerHTML='<div class=emp>加载中...</div>'
   api('GET','/users/'+U+'/memories',null,function(list){
     if(!list||!list.length){E('tMems').innerHTML='<div class=emp>暂无记忆</div>';return}
-    var h=''
-    for(var i=0;i<list.length;i++){var m=list[i]
+    var h='';for(var i=0;i<list.length;i++){var m=list[i]
       h+='<div class=item><div class=item-t>'+(m.key&&m.key!=='_summary'?m.key+': ':'')+(m.content||'')+'</div><div class=item-m>重要:'+(m.importance||0)+' | '+(m.created_at||'')+'</div><button class="btn btn-dgr" onclick="delMe('+m.id+')">删除</button></div>'}
-    E('tMems').innerHTML=h
-  })
-}
+    E('tMems').innerHTML=h})}
 function delMe(id){if(!confirm('删除？'))return;api('DELETE','/memories/'+id,null,loadMem)}
-
-function loadFil(){
-  E('tFiles').innerHTML='<div class=emp>加载中...</div>'
+function loadFil(){E('tFiles').innerHTML='<div class=emp>加载中...</div>'
   api('GET','/users/'+U+'/files',null,function(list){
     if(!list||!list.length){E('tFiles').innerHTML='<div class=emp>暂无文件</div>';return}
     var h='<table><tr><th>文件名</th><th>类型</th><th>大小</th><th>时间</th><th>操作</th></tr>'
     for(var i=0;i<list.length;i++){var f=list[i]
       var sz=f.file_size?(f.file_size>1024?(f.file_size/1024).toFixed(1)+'KB':f.file_size+'B'):'-'
       h+='<tr><td>'+(f.filename||'-')+'</td><td>'+(f.file_type||'-')+'</td><td>'+sz+'</td><td style=font-size:11px;color:#999>'+(f.created_at||'').substring(0,16)+'</td><td><button class="btn btn-dgr" onclick="delFi('+f.id+')">删除</button></td></tr>'}
-    h+='</table>';E('tFiles').innerHTML=h
-  })
-}
+    h+='</table>';E('tFiles').innerHTML=h})}
 function delFi(id){if(!confirm('删除？磁盘文件也会清理。'))return;api('DELETE','/files/'+id,null,loadFil)}
-
-function loadUsg(){
-  E('tUsage').innerHTML='<div class=emp>加载中...</div>'
+function loadUsg(){E('tUsage').innerHTML='<div class=emp>加载中...</div>'
   api('GET','/users/'+U+'/usage?days=7',null,function(d){
     if(!d||!d.length){E('tUsage').innerHTML='<div class=emp>暂无用量</div>';return}
     var h='<table><tr><th>项目</th><th>近7天用量</th></tr>'
-    for(var i=0;i<d.length;i++){var r=d[i]
-      h+='<tr><td>'+(mlabels[r.metric]||r.metric)+'</td><td><strong>'+r.total+'</strong> 次</td></tr>'}
-    h+='</table>';E('tUsage').innerHTML=h
+    for(var i=0;i<d.length;i++){var r=d[i];h+='<tr><td>'+(mlabels[r.metric]||r.metric)+'</td><td><strong>'+r.total+'</strong> 次</td></tr>'}
+    h+='</table>';E('tUsage').innerHTML=h})}
+
+// ============ 题库管理 (分页+多选) ============
+function loadBanks(){
+  api('GET','/oral/banks',null,function(d){
+    var banks=d.banks||[],h=''
+    for(var i=0;i<banks.length;i++){var b=banks[i]
+      h+='<div class="bank-item'+(curBank&&curBank.id===b.id?' sel':'')+'" onclick="selectBank('+b.id+')"><div class=bname>'+(b.icon||'')+' '+esc(b.name)+'</div><div class=binfo>'+(b.question_count||0)+'题 | '+(b.description||'')+'</div></div>'}
+    E('bankList').innerHTML=h||'<div class=emp>暂无题库</div>'
+    if(curBank) loadQuestions()
   })
 }
+function selectBank(id){
+  api('GET','/oral/banks',null,function(d){
+    for(var i=0;i<(d.banks||[]).length;i++){if(d.banks[i].id===id){curBank=d.banks[i];break}}
+    E('addQBtn').classList.remove('hidden')
+    E('qBankTitle').textContent=(curBank.icon||'')+' '+curBank.name+' — '+curBank.question_count+'题'
+    qPage=0;qSel={};updateQBatchBar()
+    loadBanks();loadQuestions()
+  })
+}
+function loadQuestions(){
+  if(!curBank)return
+  api('GET','/oral/questions?bank_id='+curBank.id+'&limit='+qPAGE_SIZE+'&offset='+(qPage*qPAGE_SIZE),null,function(d){
+    var qs=d.questions||[]
+    // Count total - approximate from bank count
+    qTotal=curBank.question_count||0
+    var h=''
+    for(var i=0;i<qs.length;i++){var q=qs[i],diff=diffLabels[q.difficulty]||'难度'+q.difficulty,chk=qSel[q.id]?' checked':''
+      h+='<tr class="'+(qSel[q.id]?'sel':'')+'"><td><input type=checkbox class=chk data-qid='+q.id+' onchange="toggleQSel('+q.id+',this.checked)"'+chk+'></td>'
+      h+='<td>'+q.id+'</td><td style=word-break:break-word>'+esc(q.question||'')+'</td><td>'+diff+'</td><td>'+esc(q.topic||'-')+'</td>'
+      h+='<td><button class="btn sm btn-pri" onclick="editQ('+q.id+')">编辑</button> <button class="btn sm btn-dgr" onclick="delQ('+q.id+')">删除</button></td></tr>'}
+    E('qBody').innerHTML=h||'<tr><td colspan=6 class=emp>暂无题目</td></tr>'
+    E('qCheckAll').checked=false
+    renderQPager()
+  })
+}
+function toggleQSel(id,checked){
+  if(checked) qSel[id]=true; else delete qSel[id]
+  updateQBatchBar()
+  // Update row highlight
+  var row=document.querySelector('#qBody input[data-qid="'+id+'"]');if(row) row.parentNode.parentNode.classList.toggle('sel',checked)
+}
+E('qCheckAll').onchange=function(){
+  var cbs=document.querySelectorAll('#qBody .chk')
+  for(var i=0;i<cbs.length;i++){cbs[i].checked=this.checked;toggleQSel(parseInt(cbs[i].dataset.qid),this.checked)}
+}
+function updateQBatchBar(){
+  var n=Object.keys(qSel).length
+  E('qBatchCount').textContent='已选 '+n+' 项'
+  E('qBatchBar').classList.toggle('hidden',n===0)
+}
+E('qBatchCancel').onclick=function(){qSel={};updateQBatchBar();loadQuestions()}
+E('qBatchDel').onclick=function(){
+  var ids=Object.keys(qSel).map(function(k){return parseInt(k)})
+  if(!ids.length||!confirm('确定删除 '+ids.length+' 道题目？'))return
+  api('POST','/oral/questions/batch-delete',{ids:ids},function(d){
+    qSel={};updateQBatchBar();loadBanks();loadQuestions()
+    alert('已删除 '+d.deleted+' 道')
+  })
+}
+function renderQPager(){
+  var pages=Math.ceil(qTotal/qPAGE_SIZE),h=''
+  if(pages<=1){E('qPager').innerHTML='';return}
+  h+='<span>共 '+qTotal+' 题</span>'
+  h+='<button '+(qPage===0?'disabled':'')+' onclick="qPage=0;loadQuestions()">首页</button>'
+  h+='<button '+(qPage===0?'disabled':'')+' onclick="qPage--;loadQuestions()">上一页</button>'
+  var s=Math.max(0,qPage-2),e=Math.min(pages,qPage+3)
+  for(var i=s;i<e;i++)h+='<span class="pg-num'+(i===qPage?' act':'')+'" onclick="qPage='+i+';loadQuestions()">'+(i+1)+'</span>'
+  h+='<button '+(qPage>=pages-1?'disabled':'')+' onclick="qPage++;loadQuestions()">下一页</button>'
+  h+='<button '+(qPage>=pages-1?'disabled':'')+' onclick="qPage='+(pages-1)+';loadQuestions()">末页</button>'
+  E('qPager').innerHTML=h
+}
+E('addBankBtn').onclick=function(){
+  showModal('<h3>新建题库</h3><label>名称</label><input id=mBankName placeholder="题库名称"><label>图标</label><input id=mBankIcon value="📚"><label>描述</label><input id=mBankDesc placeholder="题库描述"><label>排序</label><input id=mBankSort type=number value=0><div style=margin-top:16px><button onclick=saveBank()>保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
+}
+function saveBank(){
+  var b={name:E('mBankName').value,icon:E('mBankIcon').value,description:E('mBankDesc').value,sort_order:parseInt(E('mBankSort').value)||0}
+  if(!b.name){alert('请输入名称');return}
+  api('POST','/oral/banks',b,function(){hideModal();loadBanks()})
+}
+function editBank(id){
+  api('GET','/oral/banks',null,function(d){
+    var bank=null;for(var i=0;i<(d.banks||[]).length;i++){if(d.banks[i].id===id){bank=d.banks[i];break}}
+    if(!bank)return
+    showModal('<h3>编辑题库</h3><label>名称</label><input id=mBankName value="'+esc(bank.name)+'"><label>图标</label><input id=mBankIcon value="'+esc(bank.icon||'')+'"><label>描述</label><input id=mBankDesc value="'+esc(bank.description||'')+'"><label>排序</label><input id=mBankSort type=number value="'+(bank.sort_order||0)+'"><div style=margin-top:16px><button onclick="saveBankEdit('+id+')">保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
+  })
+}
+function saveBankEdit(id){
+  var b={};if(E('mBankName').value)b.name=E('mBankName').value;if(E('mBankIcon').value)b.icon=E('mBankIcon').value
+  if(E('mBankDesc').value)b.description=E('mBankDesc').value;b.sort_order=parseInt(E('mBankSort').value)||0
+  api('PUT','/oral/banks/'+id,b,function(){hideModal();loadBanks()})
+}
+function deleteBank(id){
+  if(!confirm('删除题库将同时删除所有题目，确定？'))return
+  api('DELETE','/oral/banks/'+id,null,function(d){curBank=null;E('addQBtn').classList.add('hidden');E('qBankTitle').textContent='选择题库查看题目';E('qBody').innerHTML='';loadBanks()})
+}
+E('addQBtn').onclick=function(){
+  if(!curBank)return
+  showModal('<h3>添加题目</h3><label>题目</label><textarea id=mQText rows=3 placeholder="题目内容"></textarea><label>话题</label><input id=mQTopic placeholder="话题标签"><label>难度</label><select id=mQDiff><option value=1>⭐ 入门</option><option value=2>⭐⭐ 基础</option><option value=3 selected>⭐⭐⭐ 中级</option><option value=4>⭐⭐⭐⭐ 进阶</option><option value=5>⭐⭐⭐⭐⭐ 高级</option></select><label>参考答案</label><textarea id=mQAnswer rows=3 placeholder="参考答案（可选）"></textarea><label>关键词</label><input id=mQKeywords placeholder="逗号分隔（可选）"><div style=margin-top:16px><button onclick=saveQ()>保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
+}
+function saveQ(){
+  var b={bank_id:curBank.id,question:E('mQText').value,topic:E('mQTopic').value,difficulty:parseInt(E('mQDiff').value),reference_answer:E('mQAnswer').value,keywords:E('mQKeywords').value}
+  if(!b.question){alert('请输入题目');return}
+  api('POST','/oral/questions',b,function(){hideModal();loadQuestions();loadBanks()})
+}
+function editQ(qid){
+  api('GET','/oral/questions?bank_id='+(curBank?curBank.id:'')+'&limit=500',null,function(d){
+    var q=null;for(var i=0;i<(d.questions||[]).length;i++){if(d.questions[i].id===qid){q=d.questions[i];break}}
+    if(!q)return
+    var diffOpts='';for(var j=1;j<=5;j++)diffOpts+='<option value='+j+(q.difficulty===j?' selected':'')+'>'+diffLabels[j]+'</option>'
+    showModal('<h3>编辑题目 #'+qid+'</h3><label>题目</label><textarea id=mQText rows=3>'+esc(q.question||'')+'</textarea><label>话题</label><input id=mQTopic value="'+esc(q.topic||'')+'"><label>难度</label><select id=mQDiff>'+diffOpts+'</select><label>参考答案</label><textarea id=mQAnswer rows=3>'+esc(q.reference_answer||'')+'</textarea><label>关键词</label><input id=mQKeywords value="'+esc(q.keywords||'')+'"><div style=margin-top:16px><button onclick="saveQEdit('+qid+')">保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
+  })
+}
+function saveQEdit(qid){
+  var b={question:E('mQText').value,topic:E('mQTopic').value,difficulty:parseInt(E('mQDiff').value),reference_answer:E('mQAnswer').value,keywords:E('mQKeywords').value}
+  api('PUT','/oral/questions/'+qid,b,function(){hideModal();loadQuestions()})
+}
+function delQ(qid){if(!confirm('删除题目？'))return;api('DELETE','/oral/questions/'+qid,null,function(){loadQuestions();loadBanks()})}
+
+// ============ 知识库管理 (多选) ============
+function loadKBCols(){
+  api('GET','/knowledge/collections',null,function(d){
+    var cols=(d.collections||[]).filter(function(c){return c!=='study_materials'}),h=''
+    for(var i=0;i<cols.length;i++){h+='<span class="kb-coll'+(curKB===cols[i]?' sel':'')+'" onclick="selKB(\''+cols[i]+'\')">'+cols[i]+'</span>'}
+    E('kbColls').innerHTML=h||'<div class=emp>暂无知识库集合</div>'
+  })
+}
+function selKB(name){
+  curKB=name;kbPage=0;kbSel={};updateKBBatchBar()
+  E('kbActions').classList.remove('hidden');E('kbTable').classList.remove('hidden')
+  loadKBCols();loadKBItems()
+}
+E('refreshKBBtn').onclick=loadKBCols
+function loadKBItems(){
+  if(!curKB)return
+  var off=kbPage*kbPAGE_SIZE
+  api('GET','/knowledge/'+encodeURIComponent(curKB)+'/items?limit='+kbPAGE_SIZE+'&offset='+off,null,function(d){
+    var items=d.items||[];kbTotal=d.total||0;var h=''
+    for(var i=0;i<items.length;i++){var it=items[i],src=it.metadata&&it.metadata.source?it.metadata.source:'-'
+      h+='<tr class="'+(kbSel[it.id]?'sel':'')+'"><td><input type=checkbox class=chk data-kid="'+esc(it.id||'')+'" onchange="toggleKBSel(\''+(it.id||'')+'\',this.checked)"'+(kbSel[it.id]?' checked':'')+'></td>'
+      h+='<td style=font-size:11px;color:#999>'+(it.id||'').substring(0,8)+'</td><td style=word-break:break-word>'+esc(it.text||'')+'</td><td style=font-size:12px;color:#666>'+src+'</td>'
+      h+='<td><button class="btn sm btn-dgr" onclick="delKBI(\''+(it.id||'')+'\')">删除</button></td></tr>'}
+    E('kbBody').innerHTML=h||'<tr><td colspan=5 class=emp>暂无内容</td></tr>'
+    E('kbCheckAll').checked=false
+    renderKBPager()
+  })
+}
+function toggleKBSel(id,checked){
+  if(checked) kbSel[id]=true; else delete kbSel[id]
+  updateKBBatchBar()
+}
+E('kbCheckAll').onchange=function(){
+  var cbs=document.querySelectorAll('#kbBody .chk')
+  for(var i=0;i<cbs.length;i++){cbs[i].checked=this.checked;toggleKBSel(cbs[i].dataset.kid,this.checked)}
+}
+function updateKBBatchBar(){
+  var n=Object.keys(kbSel).length
+  E('kbBatchCount').textContent='已选 '+n+' 项'
+  E('kbBatchBar').classList.toggle('hidden',n===0)
+}
+E('kbBatchCancel').onclick=function(){kbSel={};updateKBBatchBar();loadKBItems()}
+E('kbBatchDel').onclick=function(){
+  var ids=Object.keys(kbSel)
+  if(!ids.length||!confirm('确定删除 '+ids.length+' 条知识？'))return
+  api('POST','/knowledge/'+encodeURIComponent(curKB)+'/batch-delete',{ids:ids},function(d){
+    kbSel={};updateKBBatchBar();loadKBItems();loadKBCols()
+    alert('已删除 '+d.deleted+' 条')
+  })
+}
+function renderKBPager(){
+  var pages=Math.ceil(kbTotal/kbPAGE_SIZE),h=''
+  if(pages<=1){E('kbPager').innerHTML=kbTotal>0?'<span>共 '+kbTotal+' 条</span>':'';return}
+  h+='<span>共 '+kbTotal+' 条</span>'
+  h+='<button '+(kbPage===0?'disabled':'')+' onclick="kbPage=0;loadKBItems()">首页</button>'
+  h+='<button '+(kbPage===0?'disabled':'')+' onclick="kbPage--;loadKBItems()">上一页</button>'
+  var s=Math.max(0,kbPage-2),e=Math.min(pages,kbPage+3)
+  for(var i=s;i<e;i++)h+='<span class="pg-num'+(i===kbPage?' act':'')+'" onclick="kbPage='+i+';loadKBItems()">'+(i+1)+'</span>'
+  h+='<button '+(kbPage>=pages-1?'disabled':'')+' onclick="kbPage++;loadKBItems()">下一页</button>'
+  h+='<button '+(kbPage>=pages-1?'disabled':'')+' onclick="kbPage='+(pages-1)+';loadKBItems()">末页</button>'
+  E('kbPager').innerHTML=h
+}
+E('kbSearchBtn').onclick=function(){
+  var q=E('kbSearch').value;if(!q||!curKB){alert('请选择集合并输入搜索词');return}
+  api('POST','/knowledge/'+encodeURIComponent(curKB)+'/search?query='+encodeURIComponent(q)+'&top_k=30',null,function(d){
+    var items=d.results||[],h=''
+    for(var i=0;i<items.length;i++){var it=items[i],src=it.metadata&&it.metadata.source?it.metadata.source:'-'
+      h+='<tr><td></td><td style=font-size:11px;color:#999>'+(it.id||'').substring(0,8)+'</td><td style=word-break:break-word>'+esc(it.text||'')+' (相关度:'+(1-(it.distance||0)).toFixed(2)+')</td><td style=font-size:12px;color:#666>'+src+'</td><td><button class="btn sm btn-dgr" onclick="delKBI(\''+(it.id||'')+'\')">删除</button></td></tr>'}
+    E('kbBody').innerHTML=h||'<tr><td colspan=5 class=emp>无结果</td></tr>'
+    E('kbPager').innerHTML=''})
+}
+E('kbUploadBtn').onclick=function(){
+  if(!curKB){alert('请先选择集合');return}
+  E('kbFileInput').click()
+}
+function uploadKBFile(input){
+  var f=input.files[0];if(!f)return
+  if(!confirm('上传 '+f.name+' ('+(f.size/1024).toFixed(1)+'KB) 到 '+curKB+'？')){input.value='';return}
+  var fd=new FormData();fd.append('file',f)
+  var x=new XMLHttpRequest()
+  x.open('POST',B+'/api/v1/admin/knowledge/'+encodeURIComponent(curKB)+'/upload')
+  x.setRequestHeader('Authorization','Bearer '+T)
+  x.onload=function(){
+    input.value=''
+    if(x.status===200){var d=JSON.parse(x.responseText);alert('已接收 '+d.filename+'（'+d.chunks+' 个分段），后台处理中，稍后刷新查看');loadKBItems();loadKBCols()}
+    else{alert('上传失败：'+(x.responseText||'服务器错误'))}
+  }
+  x.onerror=function(){input.value='';alert('网络错误')}
+  x.send(fd)
+}
+E('kbAddBtn').onclick=function(){
+  if(!curKB){alert('请先选择集合');return}
+  showModal('<h3>添加知识到 '+curKB+'</h3><label>内容（每行一条知识）</label><textarea id=mKBText rows=8 placeholder="输入知识内容，每行一条..."></textarea><div style=margin-top:16px><button onclick=saveKB()>保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
+}
+function saveKB(){
+  var text=E('mKBText').value.trim();if(!text){alert('请输入内容');return}
+  var lines=text.split('\n').filter(function(l){return l.trim()})
+  var items=lines.map(function(l){return{text:l,metadata:{source:'公共知识'}}})
+  api('POST','/knowledge/'+encodeURIComponent(curKB)+'/items',items,function(d){hideModal();loadKBItems();alert('已导入 '+d.imported+' 条')})
+}
+function delKBI(id){if(!confirm('删除这条知识？'))return;api('DELETE','/knowledge/'+encodeURIComponent(curKB)+'/'+id,null,function(){loadKBItems();loadKBCols()})}
+E('kbDelCollBtn').onclick=function(){
+  if(!curKB||!confirm('删除整个集合 "'+curKB+'"，不可恢复！'))return
+  api('DELETE','/knowledge/'+encodeURIComponent(curKB),null,function(){curKB=null;kbPage=0;E('kbActions').classList.add('hidden');E('kbTable').classList.add('hidden');E('kbBody').innerHTML='';loadKBCols()})
+}
+E('newCollBtn').onclick=function(){
+  var name=prompt('新建集合名称（英文，如 public_knowledge）:');if(!name)return
+  api('POST','/knowledge/'+encodeURIComponent(name)+'/create',null,function(d){alert('集合 '+d.collection+' 创建成功');loadKBCols()})
+}
+
+function showModal(html){E('modalBox').innerHTML=html;E('modalBg').classList.remove('hidden')}
+function hideModal(){E('modalBg').classList.add('hidden')}
+E('modalBg').onclick=function(e){if(e.target===E('modalBg'))hideModal()}
 </script>
 </body>
 </html>

@@ -191,19 +191,30 @@ def _build_system_prompt(user: dict = None) -> str:
 
 
 async def _get_rag_context(uid: int, query: str) -> str:
-    """从用户学习资料库检索相关内容"""
+    """检索相关资料：用户私有资料 + 公共知识库"""
+    ctx_parts = []
+    # 1. 用户私有资料
     try:
         results = RAGService.search("study_materials", query, top_k=3, where={"user_id": uid})
-        if not results:
-            return ""
-        ctx = "\n[用户上传的学习资料相关内容]\n"
-        for r in results:
-            ctx += f"- {r['metadata'].get('filename','')}: {r['text'][:300]}...\n"
-        return ctx + "请参考以上资料内容回答用户问题，如果资料不相关则忽略。\n"
+        if results:
+            ctx = "\n[用户上传的学习资料相关内容]\n"
+            for r in results:
+                ctx += f"- {r['metadata'].get('filename','')}: {r['text'][:300]}...\n"
+            ctx_parts.append(ctx + "请参考以上资料内容回答用户问题，如果资料不相关则忽略。\n")
     except Exception:
-        return ""
-
-
+        pass
+    # 2. 公共知识库
+    try:
+        results = RAGService.search("public_knowledge", query, top_k=3)
+        if results:
+            ctx = "\n[公共知识库相关内容]\n"
+            for r in results:
+                src = r['metadata'].get('source', '公共知识')
+                ctx += f"- [{src}] {r['text'][:300]}...\n"
+            ctx_parts.append(ctx + "请优先参考公共知识库内容回答，如果资料不相关则忽略。\n")
+    except Exception:
+        pass
+    return "".join(ctx_parts) if ctx_parts else ""
 
 @router.post("/send")
 async def send(req: SendReq, user: dict = Depends(current_user)):

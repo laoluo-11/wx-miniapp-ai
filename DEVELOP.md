@@ -1,10 +1,39 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-11
+> 最后更新：2026-08-12
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-12 管理后台全面增强 — 题库管理 + 知识库管理
+
+管理后台从单一用户管理扩展为三模块（用户/题库/知识库），支持完整 CRUD + 分页 + 多选批量操作 + 文档上传异步解析。
+
+### 后端改动
+- **`app/routers/admin.py`**（+180 行）：新增 18 个管理端点
+  - 口语题库：banks CRUD（4个）+ questions CRUD + 批量删除（4个）
+  - 知识库：collections 列表/创建/删除 + items 增删改/批量删除 + 语义搜索 + 文档上传
+  - 上传端点使用 FastAPI BackgroundTasks 异步处理向量化（BGE 模型慢，不阻塞前端）
+- **`app/routers/oral_question.py`**（+80 行）：新增 6 个 CRUD 函数（oral_create_bank/update/delete, oral_create_question/update/delete），操作 MariaDB 同时同步 ChromaDB
+- **`app/routers/chat.py`**：`_get_rag_context()` 增加公共知识库检索 — 同时搜索 `study_materials`（私有） + `public_knowledge`（公共），两部分结果合并注入 system prompt
+- **`app/services/rag_service.py`**：新增 `list_items()` 方法 — 分页列出 ChromaDB 集合中文档（支持管理后台浏览）
+
+### 管理后台前端
+- **`admin/index.html`**（重写，586→536 行）：三 tab 架构（用户管理/题库管理/知识库）
+  - 题库管理：左侧题库列表 → 右侧题目表格，每题增删改，每 30 题分页，复选框多选 + 全选 + 批量删除
+  - 知识库管理：集合选择 → 条目分页浏览/语义搜索/逐条删除/批量删除/文本导入/文档上传（PDF/Word/TXT 自动解析分段入库）
+  - 自动检测 `/dev/` 路径前缀，同一份 HTML Dev/Online 通用
+  - Token localStorage 持久化，刷新不丢登录态
+  - 修复 modal-bg 的 display:flex 覆盖 .hidden 导致白屏遮挡
+  - 修复 API 路径未加 /dev 前缀导致请求打到 Online 实例
+
+涉及文件：
+- `server/app/routers/admin.py`
+- `server/app/routers/oral_question.py`
+- `server/app/routers/chat.py`
+- `server/app/services/rag_service.py`
+- `admin/index.html`
 
 ## 2026-08-11 Phase 1.3 学习资料库（私有 RAG）
 
