@@ -323,9 +323,19 @@ function loadUsg(){E('tUsage').innerHTML='<div class=emp>加载中...</div>'
 // ============ 题库管理 (分页+多选) ============
 function loadBanks(){
   api('GET','/oral/banks',null,function(d){
-    var banks=d.banks||[],h=''
-    for(var i=0;i<banks.length;i++){var b=banks[i]
-      h+='<div class="bank-item'+(curBank&&curBank.id===b.id?' sel':'')+'" onclick="selectBank('+b.id+')"><div class=bname>'+(b.icon||'')+' '+esc(b.name)+'</div><div class=binfo>'+(b.question_count||0)+'题 | '+(b.description||'')+'</div></div>'}
+    var banks=d.banks||[],oral=[],voice=[]
+    for(var i=0;i<banks.length;i++){if(banks[i].type==='oral')oral.push(banks[i]);else voice.push(banks[i])}
+    var h=''
+    if(oral.length){
+      h+='<div style="font-size:12px;color:#999;padding:4px 8px;margin:8px 0 4px">🎤 口语对练题库</div>'
+      for(var i=0;i<oral.length;i++){var b=oral[i]
+        h+='<div class="bank-item'+(curBank&&curBank.id===b.id?' sel':'')+'" onclick="selectBank('+b.id+')"><div class=bname>'+(b.icon||'')+' '+esc(b.name)+'</div><div class=binfo>'+(b.question_count||0)+'题</div></div>'}
+    }
+    if(voice.length){
+      h+='<div style="font-size:12px;color:#999;padding:4px 8px;margin:12px 0 4px">🎙️ 语音测评题库</div>'
+      for(var i=0;i<voice.length;i++){var b=voice[i]
+        h+='<div class="bank-item'+(curBank&&curBank.id===b.id?' sel':'')+'" onclick="selectBank('+b.id+')"><div class=bname>'+(b.icon||'')+' '+esc(b.name)+'</div><div class=binfo>'+(b.question_count||0)+'题</div></div>'}
+    }
     E('bankList').innerHTML=h||'<div class=emp>暂无题库</div>'
     if(curBank) loadQuestions()
   })
@@ -392,10 +402,10 @@ function renderQPager(){
   E('qPager').innerHTML=h
 }
 E('addBankBtn').onclick=function(){
-  showModal('<h3>新建题库</h3><label>名称</label><input id=mBankName placeholder="题库名称"><label>图标</label><input id=mBankIcon value="📚"><label>描述</label><input id=mBankDesc placeholder="题库描述"><label>排序</label><input id=mBankSort type=number value=0><div style=margin-top:16px><button onclick=saveBank()>保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
+  showModal('<h3>新建题库</h3><label>类型</label><select id=mBankType><option value=oral>🎤 口语对练</option><option value=voice>🎙️ 语音测评</option></select><label>名称</label><input id=mBankName placeholder="题库名称"><label>图标</label><input id=mBankIcon value="📚"><label>描述</label><input id=mBankDesc placeholder="题库描述"><label>排序</label><input id=mBankSort type=number value=0><div style=margin-top:16px><button onclick=saveBank()>保存</button> <button class=gry onclick=hideModal()>取消</button></div>')
 }
 function saveBank(){
-  var b={name:E('mBankName').value,icon:E('mBankIcon').value,description:E('mBankDesc').value,sort_order:parseInt(E('mBankSort').value)||0}
+  var b={name:E('mBankName').value,icon:E('mBankIcon').value,description:E('mBankDesc').value,sort_order:parseInt(E('mBankSort').value)||0,type:E('mBankType').value}
   if(!b.name){alert('请输入名称');return}
   api('POST','/oral/banks',b,function(){hideModal();loadBanks()})
 }

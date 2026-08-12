@@ -1,10 +1,29 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-12
+> 最后更新：2026-08-13
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-12 口语测评题库化 + 管理后台题库分类
+
+口语测评文本从LLM实时生成改为数据库预制管理，管理后台按类型（oral/voice）区分对练题库和测评题库。
+
+- **数据库**：oral_question_banks 表新增 type 字段（oral/voice），现有题库已标注
+- **新增 5 个语音测评题库**：日常/CET4/CET6/托福/雅思（bank_id 5-9），LLM 生成 30 篇种子文本
+- **修改 app/routers/voice.py**：/text 端点改为 ORDER BY RAND() 从数据库取文本，LLM 生成降级为兜底
+- **修改 app/routers/oral_question.py**：/banks 端点支持 ?type=oral/voice 筛选，oral_create_bank 增加 type 参数
+- **修改 app/routers/admin.py**：OralBankCreate 增加 type 字段，admin oral banks 返回 type
+- **修改 app/main.py**：修复 Dev 实例 admin HTML 路径指向 Online 的 bug
+- **修改 admin/index.html**：题库列表按类型分组（🎤 口语对练 / 🎙️ 语音测评），新建题库增加类型选择器
+
+涉及文件：
+- server/app/routers/voice.py
+- server/app/routers/oral_question.py
+- server/app/routers/admin.py
+- server/app/main.py
+- admin/index.html
 
 ## 2026-08-12 管理后台全面增强 — 题库管理 + 知识库管理
 

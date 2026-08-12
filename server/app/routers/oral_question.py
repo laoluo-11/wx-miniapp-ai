@@ -10,10 +10,17 @@ router = APIRouter(prefix="/api/v1/oral", tags=["oral"])
 
 
 @router.get("/banks")
-async def list_banks():
+async def list_banks(type: str = Query(None)):
+    """获取题库分类。type=oral(对练) / voice(测评) / None(全部)"""
     with get_db() as db:
         cur = db.cursor()
-        cur.execute("SELECT id, name, icon, description FROM oral_question_banks ORDER BY sort_order")
+        sql = "SELECT id, name, icon, description, type FROM oral_question_banks"
+        if type:
+            sql += " WHERE type=%s"
+            cur.execute(sql, (type,))
+        else:
+            sql += " ORDER BY sort_order"
+            cur.execute(sql)
         return {"banks": cur.fetchall()}
 
 
@@ -50,12 +57,12 @@ async def search_questions(
 
 # ── Admin CRUD helpers ──
 
-def oral_create_bank(name: str, icon: str = "📚", description: str = "", sort_order: int = 0) -> dict:
+def oral_create_bank(name: str, icon: str = "📚", description: str = "", sort_order: int = 0, bank_type: str = "oral") -> dict:
     with get_db() as db:
         cur = db.cursor()
         cur.execute(
-            "INSERT INTO oral_question_banks (name, icon, description, sort_order) VALUES (%s,%s,%s,%s)",
-            (name, icon, description, sort_order))
+            "INSERT INTO oral_question_banks (name, icon, description, sort_order, type) VALUES (%s,%s,%s,%s,%s)",
+            (name, icon, description, sort_order, bank_type))
         return {"id": cur.lastrowid, "name": name}
 
 def oral_update_bank(bank_id, **kw):

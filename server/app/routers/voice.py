@@ -108,38 +108,53 @@ async def get_history(user: dict = Depends(current_user)):
 
 
 async def get_text(category: str = Query("daily"), user: dict = None):
-    """Generate English evaluation text for the given difficulty."""
-    prompts = {
-        "ielts": "Generate one English paragraph (about 50 words) for IELTS Speaking Part 2 practice. Use advanced vocabulary and complex structures. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
-        "toefl": "Generate one English paragraph (about 50 words) for TOEFL Speaking practice. Use academic vocabulary and formal tone. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
-        "cet4": "Generate one English paragraph (about 50 words) for CET-4 speaking practice. Use intermediate vocabulary and clear structure. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
-        "cet6": "Generate one English paragraph (about 50 words) for CET-6 speaking practice. Use upper-intermediate vocabulary and moderate complexity. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
-        "daily": "Generate one English paragraph (about 50 words) for daily conversation practice. Use common vocabulary and natural tone. IMPORTANT: Output ONLY the paragraph text itself. No greetings, no introductory text, no quotation marks, no extra words. Just the raw paragraph.",
-    }
-    system_prompt = prompts.get(category, prompts["daily"])
-
+    """Get evaluation text from database (with LLM fallback)."""
     import random as _random
-    fallback_list = FALLBACK_SENTENCES.get(category, FALLBACK_SENTENCES["daily"])
-    fallback = _random.choice(fallback_list)
+    from app.database import get_db
 
+    # Category → bank_id mapping (banks 5-9 are voice assess banks)
+    bank_map = {"daily": 5, "cet4": 6, "cet6": 7, "toefl": 8, "ielts": 9}
+    bank_id = bank_map.get(category, 5)
+
+    # 1. Try database first
     try:
-        reply = await llm_chat([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "Generate a new sentence, different from: " + fallback}
-        ])
-        text = reply.strip().strip('"').strip("'")
-        # Strip common preambles
-        import re as _re2
-        text = _re2.sub(r'(?i)^(here\s+is\s+)?(your\s+)?(a\s+)?(english\s+)?(practice\s+)?(speaking\s+)?(paragraph|sentence|text)[:!.]*\s*', '', text).strip()
-        if 10 < len(text) < 300:
-            return {"text": text, "category": category}
+        with get_db() as db:
+            cur = db.cursor()
+            cur.execute(
+                "SELECT question FROM oral_questions WHERE bank_id=%s ORDER BY RAND() LIMIT 1",
+                (bank_id,))
+            row = cur.fetchone()
+            if row and row["question"]:
+                return {"text": row["question"].strip(), "category": category, "source": "db"}
     except Exception:
         pass
 
-    return {"text": fallback, "category": category}
+    # 2. Fallback to LLM generation
+    prompts = {
+        "ielts": "Generate one English paragraph (about 50 words) for IELTS Speaking practice. Advanced vocabulary. Output ONLY the paragraph, no extra text.",
+        "toefl": "Generate one English paragraph (about 50 words) for TOEFL Speaking practice. Academic vocabulary. Output ONLY the paragraph, no extra text.",
+        "cet4": "Generate one English paragraph (about 50 words) for CET-4 speaking practice. Intermediate vocabulary. Output ONLY the paragraph, no extra text.",
+        "cet6": "Generate one English paragraph (about 50 words) for CET-6 speaking practice. Upper-intermediate vocabulary. Output ONLY the paragraph, no extra text.",
+        "daily": "Generate one English paragraph (about 50 words) for daily conversation practice. Simple vocabulary. Output ONLY the paragraph, no extra text.",
+    }
+    fallback_list = FALLBACK_SENTENCES.get(category, FALLBACK_SENTENCES["daily"])
+    fallback_text = _random.choice(fallback_list)
 
-    # 兜底
-    return {"text": random.choice(FALLBACK_SENTENCES)}
+    try:
+        reply = await llm_chat([
+            {"role": "system", "content": prompts.get(category, prompts["daily"])},
+            {"role": "user", "content": "Generate a new sentence, different from: " + fallback_text}
+        ])
+        text = reply.strip().strip('"').strip("'")
+        import re as _re2
+        text = _re2.sub(r'(?i)^(here\s+is\s+)?(your\s+)?(a\s+)?(english\s+)?(practice\s+)?(speaking\s+)?(paragraph|sentence|text)[:!.]*\s*', '', text).strip()
+        if 10 < len(text) < 300:
+            return {"text": text, "category": category, "source": "llm"}
+    except Exception:
+        pass
+
+    # 3. Ultimate fallback
+    return {"text": fallback_text, "category": category, "source": "fallback"}
 
 
 @router.post("/assess")

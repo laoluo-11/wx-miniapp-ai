@@ -39,7 +39,7 @@ app.include_router(material.router)
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
-    with open("/opt/wx-miniapp-ai/admin/index.html", "r", encoding="utf-8") as f:
+    with open("/opt/wx-miniapp-ai-dev/admin/index.html", "r", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/")
