@@ -6,4 +6,4 @@ uploads/
 .DS_Store
 *.log
 receive/
-
+server/data/

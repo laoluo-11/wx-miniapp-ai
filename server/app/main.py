@@ -15,7 +15,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 # User uploads mounted BEFORE /static to avoid prefix conflict
-RECEIVE_DIR = "/opt/wx-miniapp-ai/receive"
+RECEIVE_DIR = "/opt/wx-miniapp-ai-dev/receive"
 os.makedirs(RECEIVE_DIR, exist_ok=True)
 app.mount("/receive", StaticFiles(directory=RECEIVE_DIR), name="receive")
 

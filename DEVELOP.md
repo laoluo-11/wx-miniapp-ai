@@ -1,11 +1,102 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-10
+> 最后更新：2026-08-11
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
+## 2026-08-11 Phase 1.3 学习资料库（私有 RAG）
+
+用户上传 PDF/Word/TXT 学习资料 → 自动解析分段 → 向量化入库 → 聊天时自动检索注入上下文。
+
+- **安装依赖**：PyMuPDF 1.28 + python-docx 1.2
+- **数据库**：新增 `user_materials` 表（user_id/filename/file_url/chunks_count/status）
+- **新增 `app/services/material_parser.py`**：PDF(fitz)/Word(python-docx)/TXT 解析 → 512字符+128重叠滑动窗口分段
+- **新增 `app/models/material.py`**：资料 CRUD（add/update_status/list/delete）
+- **新增 `app/routers/material.py`**：3个API — POST /upload（文件接收+解析+向量化）, GET /list, DELETE /{id}
+- **修改 `app/routers/chat.py`**：`_get_rag_context()` 函数，发送消息前按 user_id 检索 ChromaDB `study_materials` 集合，top-3 结果注入 system prompt
+- **修改 `app/main.py`**：注册 material 路由
+- 修复 `@router.post` 装饰器误挂在帮手函数导致 422（`_get_rag_context` 插到装饰器与 send 之间）
+
+涉及文件：
+- `server/app/services/material_parser.py`（新）
+- `server/app/models/material.py`（新）
+- `server/app/routers/material.py`（新）
+- `server/app/routers/chat.py`
+- `server/app/main.py`
+
+## 2026-08-10 Phase 1.2 分场景口语题库
+
+预置 4 个场景题库（K12口语考试/日常对话/职场英语/雅思托福），LLM 批量生成 24 道种子题，接入 RAG 语义检索。
+
+- **数据库**：新增 `oral_question_banks`（4个场景分类）+ `oral_questions`（24道题，含 topic/difficulty/reference_answer/keywords）
+- **新增 `app/routers/oral_question.py`**：3 个 API — GET /banks, GET /questions（按bank_id/difficulty筛选）, GET /search（RAG语义搜索）
+- **修改 `app/main.py`**：注册 oral_question 路由
+- 种子题：调用 DeepSeek 生成（4场景×6题），入库 MariaDB + 向量化到 ChromaDB `oral_questions` 集合
+- **口语对练人物设定**：`qwen_omni.py` 新增 CHARACTER_PROMPTS（teacher/friend/examiner/colleague 4种口吻），`voice.py` ChatReq 加 character 字段
+- **练习题目注入**：`voice.py` + `qwen_omni.py` 支持 question 字段，AI 围绕当前题目引导对话
+- **评分输出**：SYSTEM_PROMPT 要求每条回复末尾输出 `口语评分：XX/100`，前端解析做平均分统计
+- 图片理解从 OpenRouter 切换为 Qwen 直连（OPENROUTER 失效），`_vision_call` 改用 QWEN_API_KEY/QWEN_BASE_URL/qwen3.5-omni-flash
+
+涉及文件：
+- `server/app/routers/oral_question.py`（新）
+- `server/app/routers/voice.py`
+- `server/app/utils/qwen_omni.py`
+- `server/app/utils/llm_client.py`
+- `server/app/main.py`
+
+## 2026-08-10 Phase 0 RAG 知识库底层搭建
+
+搭建基于 ChromaDB + BGE 的可复用向量检索引擎，为后续错题本/题库/资料库功能提供统一底座。
+
+- **技术选型**：ChromaDB 1.5.9（PersistentClient，本地持久化）+ BAAI/bge-small-zh-v1.5（512维，95MB）
+- **新增 `app/services/rag_service.py`**（~155行）：单例服务，封装 add/search/delete/count/delete_collection/list_collections，懒加载 embedding 模型
+- **新增 `app/routers/knowledge.py`**（~95行）：5个API端点 — GET /collections, GET /{collection}/count, POST /import, POST /search, DELETE /{collection}/{id}
+- **修改 `app/main.py`**：注册 knowledge 路由 + startup 事件初始化 RAGService + 修正 RECEIVE_DIR 为 dev 路径
+- **修改 `server/requirements.txt`**：新增 chromadb、sentence-transformers 依赖
+- 模型通过 hf-mirror.com 镜像下载（HF 直连被墙），bge-large 因内存不足降级为 bge-small
+- 停止未使用的 OpenClaw 进程（~487MB），为 bge 模型腾内存
+- 性能：1000条语义检索 ~250ms，metadata 过滤正常
+- 前端验证：微信开发者工具 wx.request 联调通过
+
+涉及文件：
+- `server/app/services/rag_service.py`（新）
+- `server/app/routers/knowledge.py`（新）
+- `server/app/main.py`
+- `server/requirements.txt`
+
+
+## 2026-08-10 Phase 1.1 错题本（SM-2 间隔重复）
+
+实现完整的错题收录→复习闭环，用户可将 AI 对话中的问答加入错题本，按 SM-2 算法安排间隔复习。
+
+- **数据库**：新增 `mistake_books` 表（13 字段，含 interval_days/ease_factor/repetitions SM-2 算法列），索引 idx_user_review(user_id, next_review_at)
+- **新增 `app/models/mistake.py`**（~110 行）：数据层 — add/list_all/review_today/review_count/sm2_update/delete，使用 `with get_db() as db:` 模式（DictCursor）
+- **新增 `app/routers/mistake.py`**（~85 行）：5 个 API — POST /add, GET /review, GET /review-count, POST /{id}/rate, DELETE /{id}
+- **修改 `app/main.py`**：注册 mistake 路由
+- **SM-2 算法**：评分 1-5，≥3 分按 (ease, reps, interval) 计算下次复习（1→6→16→35天递增），<3 分重置为 1 天；ease 下限 1.3
+- 修复 get_db() context manager 误用（`db = get_db()` → `with get_db() as db:`）导致 500
+- 修复 pymysql DictCursor 双重 dict 转换 bug（`dict(zip(...))` 覆盖真实值）
+- 禁用 OpenClaw 网关（.env 注释 OPENCLAW_TOKEN），杀死占用 487MB 的 OpenClaw 进程，LLM 回退 deepseek-chat 直连
+- 修复 nginx /static/ 指向 Dev uploads（error_page 404 = @static_online 回退 Online）
+
+涉及文件：
+- `server/app/models/mistake.py`（新）
+- `server/app/routers/mistake.py`（新）
+- `server/app/main.py`
+- `server/.env`（注释 OpenClaw 配置）
+## 2026-08-10 深度搜索降级修复
+
+### 问题
+OpenRouter API Key 失效（401 "User not found"），深度搜索报错 `[Deep error: OpenRouter error 401: ...]`。
+
+### 解决
+`deep_agent.py` 重写：OpenRouter 调用失败时自动降级为普通 DeepSeek 对话（通过 `chat_stream`），不再抛异常。
+深度搜索按钮仍可用，只是联网搜索暂不可用（待新 API Key）。
+
+涉及文件：
+- `server/app/utils/deep_agent.py` — try/except 包裹 OpenRouter 调用，失败降级
 
 ## 2026-08-10 图片理解切换为 Qwen VL 直连
 
