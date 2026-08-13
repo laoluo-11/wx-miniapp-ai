@@ -6,6 +6,30 @@
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
+## 2026-08-13 联网搜索公式适配 + TTS 并行合成 + 数学符号播报修复
+
+### 联网搜索（qwen-max）公式适配
+- `deep_agent.py` 重写：OpenRouter 失效后改用阿里云 qwen-max + enable_search（服务端自动联网），失败降级普通对话；新增 `_normalize_latex` 把 qwen 原生 `\(...\)` `\[...\]` 转成 `$...$` `$$...$$` 供 towxml 渲染；流式维护 pending 处理 chunk 边界切断的孤立反斜杠；timeout 300
+- `chat.py`：send_deep_stream 对完整 full_reply 兜底再归一化 LaTeX，修复流式边界转换不完整
+
+### TTS 播报修复
+- **根因1（长回答播报不出来）**：TTS 串行逐段合成，qwen 长回答（30-40 段）耗时 15-20 秒超前端 20 秒超时 → 改为并行合成（asyncio.gather + Semaphore 2 并发 + 失败重试 3 次 + 0.4s 间隔），40 段从约 20s 降至约 13s 全成功
+- **根因2（符号播报静音）**：阿里云 NLS 对 `<` `>` `≤` `≥` `≠` 等 Unicode 数学符号读成静音 → `_clean_latex` 补齐 Unicode 符号转换
+
+### `_clean_latex` 增强（qwen 联网搜索格式适配）
+- 前置归一化：`\dfrac`/`\cfrac`/`\tfrac` → `\frac`，`\operatorname` → 空，`\begin{cases}`/`\begin{matrix}` 等环境删除，`&` → "和"
+- 符号简写：`\ge` `\le` `\ne` `\lt` `\gt` `\implies` `\iff`
+- Unicode 符号：`≤ ≥ ≠ ≈ × ÷ √ π ∞ ± ° · → ⇒ ⇔` 及普通 `<` `>` → 中文
+
+### 教训
+- 阿里云 NLS 语音合成 QPS 限流严格：并发 2 安全，并发 3 即报 `TOO_MANY_REQUESTS`（40 段只成功 8 段）
+- NLS 对 Unicode 数学符号（≤ ≥ ≠ < > 等）合成成功但读成静音，播报前必须显式转中文
+
+涉及文件：
+- server/app/routers/voice.py
+- server/app/routers/chat.py
+- server/app/utils/deep_agent.py
+
 ## 2026-08-13 学习资料上传异步化 + 文件分段句子边界优化
 
 学习资料上传从同步阻塞改为异步秒返，文件分段从固定长度硬切改为按句子边界切分，减少语义断裂。
