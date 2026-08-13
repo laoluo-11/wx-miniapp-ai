@@ -140,7 +140,7 @@ tr.sel td{background:#e8f8ef!important}
 <div class=row><h3 id=qBankTitle>选择题库查看题目</h3><button id=addQBtn class="btn btn-pri hidden">+ 添加题目</button></div>
 <div id=qBatchBar class="batch-bar hidden"><span id=qBatchCount>已选 0 项</span><button class="btn btn-dgr" id=qBatchDel>删除选中</button><button class=btn id=qBatchCancel>取消选择</button></div>
 <table id=qTable>
-<thead><tr><th style=width:36px><input type=checkbox class=chk id=qCheckAll></th><th style=width:50px>ID</th><th>题目</th><th style=width:100px>难度</th><th style=width:70px>话题</th><th style=width:110px>操作</th></tr></thead>
+<thead><tr><th style=width:36px><input type=checkbox class=chk id=qCheckAll></th><th style=width:50px>序号</th><th>题目</th><th style=width:100px>难度</th><th style=width:70px>话题</th><th style=width:110px>操作</th></tr></thead>
 <tbody id=qBody></tbody>
 </table>
 <div class=pager id=qPager></div>
@@ -162,7 +162,7 @@ tr.sel td{background:#e8f8ef!important}
 <input type=file id=kbFileInput class=hidden accept=".pdf,.docx,.doc,.txt,.md" onchange="uploadKBFile(this)">
 <div id=kbBatchBar class="batch-bar hidden"><span id=kbBatchCount>已选 0 项</span><button class="btn btn-dgr" id=kbBatchDel>删除选中</button><button class=btn id=kbBatchCancel>取消选择</button></div>
 <table id=kbTable class=hidden>
-<thead><tr><th style=width:36px><input type=checkbox class=chk id=kbCheckAll></th><th style=width:80px>ID</th><th>内容</th><th style=width:100px>来源</th><th style=width:60px>操作</th></tr></thead>
+<thead><tr><th style=width:36px><input type=checkbox class=chk id=kbCheckAll></th><th style=width:80px>序号</th><th>内容</th><th style=width:100px>来源</th><th style=width:60px>操作</th></tr></thead>
 <tbody id=kbBody></tbody>
 </table>
 <div class=pager id=kbPager></div>
@@ -358,7 +358,7 @@ function loadQuestions(){
     var h=''
     for(var i=0;i<qs.length;i++){var q=qs[i],diff=diffLabels[q.difficulty]||'难度'+q.difficulty,chk=qSel[q.id]?' checked':''
       h+='<tr class="'+(qSel[q.id]?'sel':'')+'"><td><input type=checkbox class=chk data-qid='+q.id+' onchange="toggleQSel('+q.id+',this.checked)"'+chk+'></td>'
-      h+='<td>'+q.id+'</td><td style=word-break:break-word>'+esc(q.question||'')+'</td><td>'+diff+'</td><td>'+esc(q.topic||'-')+'</td>'
+      h+='<td>'+(qPage*qPAGE_SIZE+i+1)+'</td><td style=word-break:break-word>'+esc(q.question||'')+'</td><td>'+diff+'</td><td>'+esc(q.topic||'-')+'</td>'
       h+='<td><button class="btn sm btn-pri" onclick="editQ('+q.id+')">编辑</button> <button class="btn sm btn-dgr" onclick="delQ('+q.id+')">删除</button></td></tr>'}
     E('qBody').innerHTML=h||'<tr><td colspan=6 class=emp>暂无题目</td></tr>'
     E('qCheckAll').checked=false
@@ -469,7 +469,7 @@ function loadKBItems(){
     var items=d.items||[];kbTotal=d.total||0;var h=''
     for(var i=0;i<items.length;i++){var it=items[i],src=it.metadata&&it.metadata.source?it.metadata.source:'-'
       h+='<tr class="'+(kbSel[it.id]?'sel':'')+'"><td><input type=checkbox class=chk data-kid="'+esc(it.id||'')+'" onchange="toggleKBSel(\''+(it.id||'')+'\',this.checked)"'+(kbSel[it.id]?' checked':'')+'></td>'
-      h+='<td style=font-size:11px;color:#999>'+(it.id||'').substring(0,8)+'</td><td style=word-break:break-word>'+esc(it.text||'')+'</td><td style=font-size:12px;color:#666>'+src+'</td>'
+      h+='<td style=font-size:11px;color:#999>'+(kbPage*kbPAGE_SIZE+i+1)+'</td><td style=word-break:break-word>'+esc(it.text||'')+'</td><td style=font-size:12px;color:#666>'+src+'</td>'
       h+='<td><button class="btn sm btn-dgr" onclick="delKBI(\''+(it.id||'')+'\')">删除</button></td></tr>'}
     E('kbBody').innerHTML=h||'<tr><td colspan=5 class=emp>暂无内容</td></tr>'
     E('kbCheckAll').checked=false
@@ -515,7 +515,7 @@ E('kbSearchBtn').onclick=function(){
   api('POST','/knowledge/'+encodeURIComponent(curKB)+'/search?query='+encodeURIComponent(q)+'&top_k=30',null,function(d){
     var items=d.results||[],h=''
     for(var i=0;i<items.length;i++){var it=items[i],src=it.metadata&&it.metadata.source?it.metadata.source:'-'
-      h+='<tr><td></td><td style=font-size:11px;color:#999>'+(it.id||'').substring(0,8)+'</td><td style=word-break:break-word>'+esc(it.text||'')+' (相关度:'+(1-(it.distance||0)).toFixed(2)+')</td><td style=font-size:12px;color:#666>'+src+'</td><td><button class="btn sm btn-dgr" onclick="delKBI(\''+(it.id||'')+'\')">删除</button></td></tr>'}
+      h+='<tr><td></td><td style=font-size:11px;color:#999>'+(i+1)+'</td><td style=word-break:break-word>'+esc(it.text||'')+' (相关度:'+(1-(it.distance||0)).toFixed(2)+')</td><td style=font-size:12px;color:#666>'+src+'</td><td><button class="btn sm btn-dgr" onclick="delKBI(\''+(it.id||'')+'\')">删除</button></td></tr>'}
     E('kbBody').innerHTML=h||'<tr><td colspan=5 class=emp>无结果</td></tr>'
     E('kbPager').innerHTML=''})
 }
