@@ -9,6 +9,7 @@ from app.utils.llm_client import chat as llm_chat
 from app.utils.auth import current_user
 from app.models import voice_assessment as va_db
 import random
+import asyncio
 
 async def _save_assessment(text, score, accuracy, fluency, integrity, standard, user):
     """后台保存评测记录"""
@@ -365,6 +366,17 @@ def _clean_latex(text: str) -> str:
     """将 LaTeX 公式标记转为口语化中文，避免 TTS 读出源码"""
     import re as _re_latex
 
+    # 0.0 前置归一化：qwen 联网搜索常见的 LaTeX 变体 → 标准形式（deepseek 时代未覆盖）
+    text = text.replace("\\dfrac", "\\frac")
+    text = text.replace("\\cfrac", "\\frac")
+    text = text.replace("\\tfrac", "\\frac")
+    text = text.replace("\\operatorname", "")
+    # 环境命令（\begin{cases}/\begin{matrix}/\begin{aligned} 等）→ 删除环境名，保留内容
+    text = _re_latex.sub(r"\\begin\{[^}]*\}", "", text)
+    text = _re_latex.sub(r"\\end\{[^}]*\}", "", text)
+    # LaTeX 对齐符 & → 和（分段函数/矩阵列分隔）
+    text = text.replace("&", "和")
+
     # 0. 向量（先处理，避免花括号干扰后续）
     while "\\vec" in text:
         idx = text.find("\\vec")
@@ -433,6 +445,13 @@ def _clean_latex(text: str) -> str:
     text = text.replace("\\approx", "约等于")
     text = text.replace("\\geq", "大于等于")
     text = text.replace("\\leq", "小于等于")
+    text = text.replace("\\ge", "大于等于")
+    text = text.replace("\\le", "小于等于")
+    text = text.replace("\\ne", "不等于")
+    text = text.replace("\\lt", "小于")
+    text = text.replace("\\gt", "大于")
+    text = text.replace("\\implies", "推出")
+    text = text.replace("\\iff", "等价于")
 
     # 省略号
     text = text.replace("\\ldots", "省略号")
@@ -554,6 +573,26 @@ def _clean_latex(text: str) -> str:
     text = text.replace("\\epsilon", "伊普西龙")
     text = text.replace("\\varphi", "斐")
 
+    # 8.5 Unicode 数学符号（qwen 直接输出字符而非 LaTeX 命令；NLS 读这些字符会静音，显式转中文）
+    text = text.replace("≤", "小于等于")   # ≤
+    text = text.replace("≥", "大于等于")   # ≥
+    text = text.replace("≠", "不等于")         # ≠
+    text = text.replace("≈", "约等于")         # ≈
+    text = text.replace("×", "乘")                     # ×
+    text = text.replace("÷", "除以")               # ÷
+    text = text.replace("√", "根号")               # √
+    text = text.replace("π", "派")                     # π
+    text = text.replace("∞", "无穷大")         # ∞
+    text = text.replace("±", "正负")               # ±
+    text = text.replace("°", "度")                     # °
+    text = text.replace("·", "乘")                     # ·
+    text = text.replace("→", "右箭头")         # →
+    text = text.replace("⇒", "推出")               # ⇒
+    text = text.replace("⇔", "等价于")         # ⇔
+    # 普通 < > 比较符号（HTML 标签已在前端去除，此处 < > 均为数学比较）
+    text = text.replace("<", "小于")
+    text = text.replace(">", "大于")
+
     # 9. 去掉 $$ 和 $ 包裹符
     text = _re_latex.sub(r"\$\$([\s\S]*?)\$\$", r"\1", text)
     text = _re_latex.sub(r"(?<!\\)\$([^$]+?)\$", r"\1", text)
@@ -654,13 +693,24 @@ async def tts(req: TtsReq, user: dict = Depends(current_user)):
 
     clean_text = _clean_latex(_clean_markdown(_clean_units(req.text.strip())))
     sentences = _split_sentences(clean_text, max_len=80)
-    segments = []
 
-    for s, para_end in sentences:
-        url = await _tts_one(s, req.voice)
+    # 并行合成（限流 2 并发，阿里云 NLS 并发 3 即限流）：长回答串行逐段合成耗时长，超前端超时导致播报失败
+    _sem = asyncio.Semaphore(2)
+
+    async def _synth_one(s, para_end):
+        url = None
+        for _attempt in range(3):
+            async with _sem:
+                url = await _tts_one(s, req.voice)
+            if url:
+                break
+            await asyncio.sleep(0.4)
         if url:
-            segments.append({"text": s, "url": url, "pauseMs": _pause_ms(s, para_end)})
-        # 单个句子失败不阻塞整体
+            return {"text": s, "url": url, "pauseMs": _pause_ms(s, para_end)}
+        return None
+
+    results = await asyncio.gather(*[_synth_one(s, pe) for s, pe in sentences])
+    segments = [r for r in results if r]
 
     if not segments:
         raise HTTPException(500, "语音合成失败")

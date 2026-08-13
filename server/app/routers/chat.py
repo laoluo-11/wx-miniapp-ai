@@ -554,6 +554,10 @@ async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
             yield f"\n[Deep error: {str(e)}]"
             return
 
+        # 兜底：full_reply 是完整文本，再次归一化 LaTeX，修复流式 chunk 边界导致的转换不完整
+        from app.utils.deep_agent import _normalize_latex
+        full_reply = _normalize_latex(full_reply)
+
         clean_text, diagrams = _parse_diagrams(full_reply)
         image_urls = await _process_diagrams(diagrams)
         save_text = clean_text.strip() or ""
