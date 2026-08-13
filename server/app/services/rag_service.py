@@ -12,7 +12,7 @@ from chromadb.config import Settings as ChromaSettings
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
-PERSIST_DIR = os.getenv("RAG_PERSIST_DIR", "/opt/wx-miniapp-ai-dev/server/data/chroma_db")
+PERSIST_DIR = os.getenv("RAG_PERSIST_DIR", "/opt/wx-miniapp-ai/server/data/chroma_db")
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")
 
 
