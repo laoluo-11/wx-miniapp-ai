@@ -6,6 +6,16 @@
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
 
+## 2026-08-13 联网搜索接入 RAG 检索（知识库）
+
+联网搜索（🔍 qwen-max）此前不检索知识库，用户上传资料后在 🔍 模式问相关问题检索不到。补齐：三个端点统一先检索知识库再回答。
+
+- chat.py 的 /send-deep、/send-deep-stream 在调用 chat_deep/chat_deep_stream 前，加 `rag_context = await _get_rag_context(uid, messages[-1]["content"])` 拼进 system prompt，与 /send 保持一致
+- 检索两层：study_materials（用户私有资料，按 user_id 隔离）+ public_knowledge（公共知识库）
+
+涉及文件：
+- server/app/routers/chat.py
+
 ## 2026-08-13 联网搜索公式适配 + TTS 并行合成 + 数学符号播报修复
 
 ### 联网搜索（qwen-max）公式适配

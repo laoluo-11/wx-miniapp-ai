@@ -432,8 +432,13 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
     for i, h in enumerate(history):
         content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
         messages.append({"role": h["role"], "content": content})
+    # RAG: 检索用户资料 + 公共知识库，注入 system prompt（与 /send 一致）
+    rag_context = await _get_rag_context(uid, messages[-1]["content"])
+    system_prompt = _build_system_prompt(user)
+    if rag_context:
+        system_prompt += rag_context
     try:
-        full_reply = await chat_deep(messages, uid=uid, system=_build_system_prompt(user))
+        full_reply = await chat_deep(messages, uid=uid, system=system_prompt)
     except Exception as e:
         full_reply = f"[Deep error: {str(e)}]"
     clean_text, diagrams = _parse_diagrams(full_reply)
@@ -546,8 +551,13 @@ async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
 
     async def stream_deep():
         full_reply = ""
+        # RAG: 检索用户资料 + 公共知识库，注入 system prompt（与 /send 一致）
+        rag_context = await _get_rag_context(uid, messages[-1]["content"])
+        system_prompt = _build_system_prompt(user)
+        if rag_context:
+            system_prompt += rag_context
         try:
-            async for chunk in chat_deep_stream(messages, uid=uid, system=_build_system_prompt(user)):
+            async for chunk in chat_deep_stream(messages, uid=uid, system=system_prompt):
                 full_reply += chunk
                 yield chunk
         except Exception as e:
