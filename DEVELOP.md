@@ -1,10 +1,46 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-13
+> 最后更新：2026-08-14
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-14 RAG embedding 换阿里云 API + 分段死循环修复 + 知识库异步化补全
+
+### 根因：上传文件反复 OOM 拖垮服务器
+
+用户上传 81 页 PDF（高中物理知识点总结）反复失败，服务器内存被拖垮（Dev 进程被 OOM killer 反复杀、systemd 重启、模型缓存清零又重载，死循环）。排查发现两个独立根因，逐一修复。
+
+### 1. embedding 从本地 BGE 模型改为阿里云 DashScope API
+
+- 本地 SentenceTransformer(bge-small-zh-v1.5) 加载 torch 后吃 ~1.5GB，3.7GB 小机器一上传就 OOM
+- rag_service.py 删掉 _get_embedding_fn/SentenceTransformer，新增 _embed_texts(texts) 用 httpx POST {QWEN_BASE_URL}/embeddings（model=text-embedding-v4，1024 维，每批 10 条按 index 排序），add/search 的 encode 统一改调它
+- 复用 .env 已有 QWEN_API_KEY（实测已开通 embedding 服务），服务器零本地模型内存，Dev 空载从 1.5GB 降到 120MB
+- 换模型维度 512→1024，重建 Dev ChromaDB（题库 84 + 资料 1 + 公共知识 1，全恢复）
+
+### 2. _split_chunks 死循环修复（O(n²)/死循环 → O(n) 单次遍历）
+
+- 旧「重叠回退 + 边界对齐」算法：new_start = end - CHUNK_OVERLAP 后对齐边界，当某段前 128 字内无句子边界时 start 回退到原点，而防死循环 if start>=end 不触发（此时 start<end），无限循环
+- 症状：8 万字 PDF 切分 90 秒+跑不完、CPU 96%、内存 2GB+、文件永不入库（定位方法：加循环计数器，观察 start 卡死在同一点）
+- 修复：重写为 O(n) 单次遍历——_SENT_SPLIT.split(text) 一次切句子 + 贪心累积凑满 CHUNK_SIZE（超长句硬切），去掉重叠回退。实测 8 万字 0.003s
+- CHUNK_SIZE 由 512 调整为 1000（用户确认，减少知识条数、每条上下文更完整）
+
+### 3. 知识库管理异步化 + 空 metadata 兜底 + 检索遍历（8/13 后累积补交）
+
+- admin.py：文本导入 admin_kb_import 改 BackgroundTasks 异步（_do_embed），秒返 processing；新建集合改用 RAGService.create_collection（get_or_create，不加载模型）；文档上传抽 _process_kb_upload 后台解析+分批向量化（防大 PDF 504/OOM）
+- rag_service.py add 空 metadata 兜底 [m if m else {"source":"manual"}]（ChromaDB 拒收空 dict）
+- chat.py _get_rag_context 公共知识库从硬编码 public_knowledge 改为遍历所有公共集合（排除 study_materials/oral_questions）
+- material.py 上传用 formData 原始文件名（修 wx.uploadFile 哈希名问题）+ 磁盘名清洗路径分隔符
+- admin/index.html 上传/导入提示改为「后台处理中，稍后刷新」
+
+涉及文件：
+- server/app/services/rag_service.py
+- server/app/services/material_parser.py
+- server/app/routers/admin.py
+- server/app/routers/chat.py
+- server/app/routers/material.py
+- admin/index.html
 
 ## 2026-08-13 联网搜索接入 RAG 检索（知识库）
 

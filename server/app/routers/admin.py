@@ -424,11 +424,15 @@ async def admin_kb_items(collection: str, limit: int = Query(100, ge=1, le=500),
     return RAGService.list_items(collection, limit, offset)
 
 @router.post("/knowledge/{collection}/items")
-async def admin_kb_import(collection: str, items: list[KBImport], authorization: str = Header(None)):
+async def admin_kb_import(collection: str, items: list[KBImport], bg: BackgroundTasks,
+                          authorization: str = Header(None)):
     _verify_token(authorization)
     docs = [it.text for it in items]; metas = [it.metadata for it in items]
-    count = RAGService.add(collection, documents=docs, metadatas=metas)
-    return {"ok": True, "imported": count}
+    if not docs:
+        raise HTTPException(400, "内容不能为空")
+    # 异步：后台 BGE 向量化（慢），秒返 processing，避免前端阻塞
+    bg.add_task(_do_embed, collection, docs, metas, "manual")
+    return {"ok": True, "imported": len(docs), "status": "processing"}
 
 @router.delete("/knowledge/{collection}/{item_id}")
 async def admin_kb_delete_item(collection: str, item_id: str, authorization: str = Header(None)):
@@ -446,14 +450,9 @@ async def admin_kb_batch_delete(collection: str, req: BatchDeleteKB, authorizati
 @router.post("/knowledge/{collection}/create")
 async def admin_kb_create_collection(collection: str, authorization: str = Header(None)):
     _verify_token(authorization)
-    import uuid
-    dummy_id = str(uuid.uuid4())
-    try:
-        RAGService.add(collection, documents=["_init_"], metadatas=[{"_dummy": True}], ids=[dummy_id])
-        RAGService.delete(collection, [dummy_id])
-        return {"ok": True, "collection": collection}
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    if not RAGService.create_collection(collection):
+        raise HTTPException(500, "创建集合失败")
+    return {"ok": True, "collection": collection}
 
 @router.delete("/knowledge/{collection}")
 async def admin_kb_delete_collection(collection: str, authorization: str = Header(None)):
@@ -472,30 +471,39 @@ async def admin_kb_search(collection: str, query: str = Query(...),
 async def admin_kb_upload(collection: str, bg: BackgroundTasks,
                            file: UploadFile = File(...), authorization: str = Header(None)):
     _verify_token(authorization)
-    from app.services.material_parser import parse_file
     suffix = _os.path.splitext(file.filename or "doc.txt")[1] or ".txt"
-    bytes_data = await file.read()
     fname = file.filename or "upload"+suffix
+    bytes_data = await file.read()
 
-    # Parse synchronously (fast, no embedding)
+    # 保存临时文件（快）；解析 + 向量化全部后台执行，避免大 PDF 同步解析超时（nginx 504）
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(bytes_data)
         tmp_path = tmp.name
+
+    bg.add_task(_process_kb_upload, collection, tmp_path, fname)
+
+    return {"ok": True, "filename": fname, "collection": collection, "status": "processing"}
+
+
+def _process_kb_upload(collection: str, tmp_path: str, fname: str):
+    """后台：解析文档 + 分批向量化（防大 PDF OOM）+ 清理临时文件"""
     try:
+        from app.services.material_parser import parse_file
         chunks = parse_file(tmp_path, fname)
+        if chunks:
+            BATCH = 8
+            for i in range(0, len(chunks), BATCH):
+                batch = chunks[i:i+BATCH]
+                metas = [{"source": fname, "chunk_index": i+j} for j in range(len(batch))]
+                RAGService.add(collection, documents=batch, metadatas=metas)
+            logger = __import__("logging").getLogger(__name__)
+            logger.info("KB upload done: %s -> %s, %d chunks", fname, collection, len(chunks))
+    except Exception as e:
+        logger = __import__("logging").getLogger(__name__)
+        logger.error("KB upload failed: %s -> %s: %s", fname, collection, e)
     finally:
         try: _os.unlink(tmp_path)
         except: pass
-
-    if not chunks:
-        raise HTTPException(400, "no content extracted")
-
-    # Embedding + ChromaDB in background (slow - BGE model CPU)
-    metas = [{"source": fname, "chunk_index": i} for i in range(len(chunks))]
-    bg.add_task(_do_embed, collection, chunks, metas, fname)
-
-    return {"ok": True, "filename": fname, "chunks": len(chunks),
-            "collection": collection, "status": "processing"}
 
 def _do_embed(collection: str, chunks: list, metas: list, fname: str):
     """Background: embed + insert into ChromaDB"""

@@ -4,7 +4,7 @@
 import os
 import uuid
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
 from app.utils.auth import current_user
 from app.models import material as mat_db
 from app.services.material_parser import parse_file
@@ -21,18 +21,23 @@ UPLOAD_DIR = "/opt/wx-miniapp-ai-dev/uploads/materials"
 async def upload_material(
     file: UploadFile = File(...),
     user: dict = Depends(current_user),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
+    filename: str = Form("")
 ):
     """上传学习资料，秒返 processing，后台解析+向量化"""
-    if not file.filename:
+    # 优先用前端 formData 传的原始文件名，否则用 multipart 的 file.filename（可能是临时路径哈希名）
+    original_name = (filename or "").strip() or file.filename
+    if not original_name:
         raise HTTPException(400, "文件名不能为空")
 
-    ext = os.path.splitext(file.filename)[1].lower()
+    ext = os.path.splitext(original_name)[1].lower()
     if ext not in (".pdf", ".docx", ".doc", ".txt", ".md"):
         raise HTTPException(400, f"不支持的文件格式: {ext}")
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    safe_name = f"{uuid.uuid4().hex}_{file.filename}"
+    # 磁盘文件名清洗路径分隔符，防注入；数据库仍存原始名（显示友好）
+    safe_disk = original_name.replace("/", "_").replace("\\", "_")
+    safe_name = f"{uuid.uuid4().hex}_{safe_disk}"
     filepath = os.path.join(UPLOAD_DIR, safe_name)
 
     # 保存文件（快）
@@ -45,12 +50,12 @@ async def upload_material(
     file_url = f"/static/materials/{safe_name}"
 
     # 数据库记录（状态 processing）
-    mid = mat_db.add(user["id"], file.filename, file_url, size)
+    mid = mat_db.add(user["id"], original_name, file_url, size)
 
     # 后台：解析 + 向量化 + 更新状态
-    background_tasks.add_task(_process_material, mid, filepath, file.filename, user["id"])
+    background_tasks.add_task(_process_material, mid, filepath, original_name, user["id"])
 
-    return {"status": "processing", "id": mid, "filename": file.filename}
+    return {"status": "processing", "id": mid, "filename": original_name}
 
 
 def _process_material(mid: int, filepath: str, filename: str, user_id: int):
@@ -60,15 +65,13 @@ def _process_material(mid: int, filepath: str, filename: str, user_id: int):
         if not chunks:
             mat_db.update_status(mid, "failed")
             return
-        docs = []
-        metas = []
-        ids_list = []
-        for i, chunk in enumerate(chunks):
-            docs.append(chunk)
-            metas.append({"material_id": mid, "user_id": user_id,
-                          "filename": filename, "chunk_index": i})
-            ids_list.append(f"mat_{mid}_{i}")
-        RAGService.add("study_materials", documents=docs, metadatas=metas, ids=ids_list)
+        BATCH = 8
+        for i in range(0, len(chunks), BATCH):
+            batch = chunks[i:i+BATCH]
+            metas = [{"material_id": mid, "user_id": user_id,
+                      "filename": filename, "chunk_index": i+j} for j in range(len(batch))]
+            ids_list = [f"mat_{mid}_{i+j}" for j in range(len(batch))]
+            RAGService.add("study_materials", documents=batch, metadatas=metas, ids=ids_list)
         mat_db.update_status(mid, "ready", len(chunks))
         logger.info("Material %d processed: %d chunks", mid, len(chunks))
     except Exception as e:

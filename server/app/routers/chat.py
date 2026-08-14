@@ -203,15 +203,22 @@ async def _get_rag_context(uid: int, query: str) -> str:
             ctx_parts.append(ctx + "请参考以上资料内容回答用户问题，如果资料不相关则忽略。\n")
     except Exception:
         pass
-    # 2. 公共知识库
+    # 2. 公共知识库（检索所有公共集合，排除私有资料 study_materials 和口语题库 oral_questions）
     try:
-        results = RAGService.search("public_knowledge", query, top_k=3)
-        if results:
-            ctx = "\n[公共知识库相关内容]\n"
-            for r in results:
-                src = r['metadata'].get('source', '公共知识')
-                ctx += f"- [{src}] {r['text'][:300]}...\n"
-            ctx_parts.append(ctx + "请优先参考公共知识库内容回答，如果资料不相关则忽略。\n")
+        public_collections = [c for c in RAGService.list_collections()
+                              if c not in ("study_materials", "oral_questions")]
+        pub_lines = []
+        for col in public_collections:
+            try:
+                results = RAGService.search(col, query, top_k=3)
+                for r in results:
+                    src = r['metadata'].get('source', col)
+                    pub_lines.append(f"- [{src}] {r['text'][:300]}...")
+            except Exception:
+                continue
+        if pub_lines:
+            ctx = "\n[公共知识库相关内容]\n" + "\n".join(pub_lines)
+            ctx_parts.append(ctx + "\n请优先参考公共知识库内容回答，如果资料不相关则忽略。\n")
     except Exception:
         pass
     return "".join(ctx_parts) if ctx_parts else ""
