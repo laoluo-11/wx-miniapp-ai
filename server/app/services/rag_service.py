@@ -1,6 +1,6 @@
 """
 RAG 知识库检索服务 — 单例模式
-基于 ChromaDB + BAAI/bge-large-zh-v1.5
+基于 ChromaDB + 阿里云 DashScope text-embedding API（零本地模型内存）
 """
 import logging
 import os
@@ -11,9 +11,13 @@ from chromadb.config import Settings as ChromaSettings
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
+# embedding 走阿里云 DashScope API（复用 QWEN_API_KEY），不再本地加载 torch 模型
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v4")
+EMBEDDING_BASE_URL = os.getenv(
+    "QWEN_BASE_URL",
+    "https://ws-vvchkx3qqa728hg2.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+)
 PERSIST_DIR = os.getenv("RAG_PERSIST_DIR", "/opt/wx-miniapp-ai/server/data/chroma_db")
-HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")
 
 
 class RAGService:
@@ -21,14 +25,13 @@ class RAGService:
 
     _instance: Optional["RAGService"] = None
     _client: Optional[chromadb.PersistentClient] = None
-    _embedding_fn = None
 
     def __init__(self):
         raise RuntimeError("Use RAGService.initialize() instead of constructor")
 
     @classmethod
     def initialize(cls, persist_dir: str | None = None) -> "RAGService":
-        """初始化 ChromaDB 客户端（延迟加载模型）"""
+        """初始化 ChromaDB 客户端（embedding 走 API，无需加载模型）"""
         if cls._instance is not None:
             return cls._instance
 
@@ -44,21 +47,37 @@ class RAGService:
         return cls._instance
 
     @classmethod
-    def _get_embedding_fn(cls):
-        """延迟加载 embedding 模型"""
-        if cls._embedding_fn is not None:
-            return cls._embedding_fn
+    def _embed_texts(cls, texts: list[str]) -> list[list[float]]:
+        """调用阿里云 DashScope embedding API 编码文本，返回等长向量列表"""
+        import httpx
 
-        if HF_ENDPOINT and "HF_ENDPOINT" not in os.environ:
-            os.environ["HF_ENDPOINT"] = HF_ENDPOINT
+        api_key = os.getenv("QWEN_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("QWEN_API_KEY not set")
 
-        from sentence_transformers import SentenceTransformer
-
-        logger.info(f"Loading embedding model: {EMBEDDING_MODEL} ...")
-        model = SentenceTransformer(EMBEDDING_MODEL)
-        cls._embedding_fn = model
-        logger.info(f"Embedding model loaded, dim={model.get_sentence_embedding_dimension()}")
-        return cls._embedding_fn
+        _BATCH = 10
+        out: list[list[float]] = []
+        for i in range(0, len(texts), _BATCH):
+            batch = texts[i:i + _BATCH]
+            r = httpx.post(
+                f"{EMBEDDING_BASE_URL}/embeddings",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": EMBEDDING_MODEL, "input": batch},
+                timeout=60,
+            )
+            r.raise_for_status()
+            data = r.json().get("data", [])
+            if len(data) == 1 and "index" not in data[0]:
+                # 单条输入时无 index 字段
+                out.append(data[0]["embedding"])
+            else:
+                # 批量输入按 index 还原顺序
+                for item in sorted(data, key=lambda x: x.get("index", 0)):
+                    out.append(item["embedding"])
+        return out
 
     @classmethod
     def _get_collection(cls, name: str):
@@ -78,14 +97,15 @@ class RAGService:
         ids: list[str] | None = None,
     ) -> int:
         """批量添加文档，返回添加数量"""
-        model = cls._get_embedding_fn()
-        embeddings = model.encode(documents, normalize_embeddings=True).tolist()
+        embeddings = cls._embed_texts(documents)
 
         if ids is None:
             import uuid
             ids = [str(uuid.uuid4()) for _ in documents]
         if metadatas is None:
             metadatas = [{} for _ in documents]
+        # ChromaDB 拒绝空 metadata（报 Expected metadata to be a non-empty dict），填默认值
+        metadatas = [m if m else {"source": "manual"} for m in metadatas]
 
         collection = cls._get_collection(collection_name)
         collection.add(embeddings=embeddings, documents=documents, metadatas=metadatas, ids=ids)
@@ -101,8 +121,7 @@ class RAGService:
         where: dict | None = None,
     ) -> list[dict]:
         """语义检索，返回 [{id, text, metadata, distance}]"""
-        model = cls._get_embedding_fn()
-        query_embedding = model.encode([query], normalize_embeddings=True).tolist()
+        query_embedding = cls._embed_texts([query])
 
         collection = cls._get_collection(collection_name)
         results = collection.query(
@@ -148,6 +167,18 @@ class RAGService:
             logger.warning(f"Failed to delete collection '{collection_name}': {e}")
             return False
 
+    @classmethod
+    def create_collection(cls, collection_name: str) -> bool:
+        """创建集合（若不存在），不触发 embedding，瞬时完成"""
+        if cls._client is None:
+            return False
+        try:
+            cls._get_collection(collection_name)
+            logger.info(f"Created collection '{collection_name}'")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to create collection '{collection_name}': {e}")
+            return False
 
     @classmethod
     def list_items(cls, collection_name: str, limit: int = 100, offset: int = 0) -> dict:
@@ -170,7 +201,6 @@ class RAGService:
                     "metadata": results["metadatas"][i] if results["metadatas"] else {},
                 })
         return {"total": total, "items": items}
-
 
     @classmethod
     def list_collections(cls) -> list[str]:

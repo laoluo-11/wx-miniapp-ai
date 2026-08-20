@@ -1,10 +1,51 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-08-13
+> 最后更新：2026-08-20
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-20 知识库 RAG 重构 — embedding 迁移阿里云 API + 上传全异步 + 切分死循环修复
+
+知识库/学习资料 RAG 系统整体重构：embedding 从本地 BGE 模型迁移到阿里云 DashScope API（零本地模型内存），知识库导入/文档上传全部异步化秒返，分批向量化防大文件 OOM，并修复切分死循环。
+
+### embedding 迁移（rag_service.py）
+- 从本地 `BAAI/bge-large-zh-v1.5`（sentence_transformers 加载 torch 模型耗内存）改为阿里云 DashScope `text-embedding-v4` API，复用 QWEN_API_KEY，维度 1024
+- 新增 `_embed_texts` 批量调 API（BATCH=10）；移除 HF_ENDPOINT / sentence_transformers 依赖
+- 修复 ChromaDB 拒绝空 metadata（Expected metadata to be a non-empty dict），填默认值 `{"source":"manual"}`
+- 新增 `create_collection` 方法（不触发 embedding，瞬时建集合）
+
+### 知识库管理后台异步化（admin.py / admin/index.html）
+- `/knowledge/{collection}/items` 手动导入改为后台 `_do_embed` 异步向量化，秒返 processing
+- 文档上传改为：存临时文件 → 后台 `_process_kb_upload` 解析 + 分批向量化（BATCH=8）+ 清理临时文件
+- 创建集合改用 `create_collection()`，不再用「插 dummy 再删」的方式
+- 前端提示文案改为「后台解析中，稍后刷新」+ 延迟刷新
+
+### 学习资料上传优化（material.py）
+- 新增 filename Form 参数接前端原始文件名；磁盘文件名清洗 `/`、`\` 防路径注入
+- `_process_material` 改为分批向量化（BATCH=8）
+- UPLOAD_DIR / 文件路径从 dev 路径切到正式路径
+
+### 切分死循环修复（material_parser.py）
+- CHUNK_SIZE 512→1000，去掉 128 重叠
+- `_split_chunks` 重写为 O(n) 单次遍历贪心累积，修复旧版「重叠回退」算法在无标点长段处死循环（8 万字跑 90 秒、内存涨到 2GB+）
+
+### 公共知识库检索（chat.py）
+- 从固定 `public_knowledge` 集合改为检索所有公共集合（排除 study_materials、oral_questions）
+
+### 路径修正（main.py）
+- admin 页面读取路径 dev → 正式路径
+
+涉及文件：
+- server/app/services/rag_service.py
+- server/app/services/material_parser.py
+- server/app/routers/admin.py
+- server/app/routers/material.py
+- server/app/routers/chat.py
+- server/app/main.py
+- admin/index.html
+
 
 ## 2026-08-13 联网搜索接入 RAG 检索（知识库）
 

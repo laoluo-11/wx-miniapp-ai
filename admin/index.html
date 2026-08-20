@@ -532,7 +532,7 @@ function uploadKBFile(input){
   x.setRequestHeader('Authorization','Bearer '+T)
   x.onload=function(){
     input.value=''
-    if(x.status===200){var d=JSON.parse(x.responseText);alert('已接收 '+d.filename+'（'+d.chunks+' 个分段），后台处理中，稍后刷新查看');loadKBItems();loadKBCols()}
+    if(x.status===200){var d=JSON.parse(x.responseText);alert('已接收 '+d.filename+'，后台解析中（大文件可能需要一点时间），稍后刷新查看');setTimeout(function(){loadKBItems();loadKBCols()},3000)}
     else{alert('上传失败：'+(x.responseText||'服务器错误'))}
   }
   x.onerror=function(){input.value='';alert('网络错误')}
@@ -546,7 +546,7 @@ function saveKB(){
   var text=E('mKBText').value.trim();if(!text){alert('请输入内容');return}
   var lines=text.split('\n').filter(function(l){return l.trim()})
   var items=lines.map(function(l){return{text:l,metadata:{source:'公共知识'}}})
-  api('POST','/knowledge/'+encodeURIComponent(curKB)+'/items',items,function(d){hideModal();loadKBItems();alert('已导入 '+d.imported+' 条')})
+  api('POST','/knowledge/'+encodeURIComponent(curKB)+'/items',items,function(d){hideModal();alert('已接收 '+d.imported+' 条，后台处理中，稍后自动刷新');setTimeout(loadKBItems,2500)})
 }
 function delKBI(id){if(!confirm('删除这条知识？'))return;api('DELETE','/knowledge/'+encodeURIComponent(curKB)+'/'+id,null,function(){loadKBItems();loadKBCols()})}
 E('kbDelCollBtn').onclick=function(){
