@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from app.utils.auth import current_user
 from app.utils.llm_client import chat as llm_chat, chat_stream, gen_title
 from app.utils.deep_agent import chat_deep, chat_deep_stream
-from app.services.rag_service import RAGService
 from app.utils.image_gen import generate_image
 from app.utils.svg_render import svg_save
 from app.utils.diagram_prompt import DIAGRAM_SYSTEM_PROMPT
@@ -175,53 +174,15 @@ async def _resolve_file_message(msg: str) -> str:
 
 def _build_system_prompt(user: dict = None) -> str:
     prompt = DIAGRAM_SYSTEM_PROMPT
-    prompt += "\n\n[身份设定] 你是「灵慧老师」，智领未来智能机器人有限公司旗下全科伴学智能助手。你耐心、专业、循循善诱，像一位亲切的老师一样帮助学生理解知识、解答疑惑、辅导功课。回答时请用温和鼓励的语气，善用比喻和生活化例子，让学习变得轻松有趣。"
     if user:
         name = user.get("nickname") or user.get("nickName") or ""
         uid = user.get("id", "")
         if name:
             prompt += f"\n\n[当前用户]\n用户ID: {uid}\n用户昵称: {name}\n请用这个昵称称呼用户。"
-    prompt += "\n\n[语音播报要求] 回答将可能被TTS朗读，请注意：①多用短句，每句话尽量不超过40字；②适当使用口语化语气词（如「你看」「注意啦」「我们来想」），让节奏自然；③段落分明，段与段之间用空行分隔；④避免堆砌超长复合句和连续英文逗号，该停顿的地方用句号收尾。"
     return prompt
 
 
 # ── Main send ──
-
-
-
-
-async def _get_rag_context(uid: int, query: str) -> str:
-    """检索相关资料：用户私有资料 + 公共知识库"""
-    ctx_parts = []
-    # 1. 用户私有资料
-    try:
-        results = RAGService.search("study_materials", query, top_k=3, where={"user_id": uid})
-        if results:
-            ctx = "\n[用户上传的学习资料相关内容]\n"
-            for r in results:
-                ctx += f"- {r['metadata'].get('filename','')}: {r['text'][:300]}...\n"
-            ctx_parts.append(ctx + "请参考以上资料内容回答用户问题，如果资料不相关则忽略。\n")
-    except Exception:
-        pass
-    # 2. 公共知识库（检索所有公共集合，排除私有资料 study_materials 和口语题库 oral_questions）
-    try:
-        public_collections = [c for c in RAGService.list_collections()
-                              if c not in ("study_materials", "oral_questions")]
-        pub_lines = []
-        for col in public_collections:
-            try:
-                results = RAGService.search(col, query, top_k=3)
-                for r in results:
-                    src = r['metadata'].get('source', col)
-                    pub_lines.append(f"- [{src}] {r['text'][:300]}...")
-            except Exception:
-                continue
-        if pub_lines:
-            ctx = "\n[公共知识库相关内容]\n" + "\n".join(pub_lines)
-            ctx_parts.append(ctx + "\n请优先参考公共知识库内容回答，如果资料不相关则忽略。\n")
-    except Exception:
-        pass
-    return "".join(ctx_parts) if ctx_parts else ""
 
 @router.post("/send")
 async def send(req: SendReq, user: dict = Depends(current_user)):
@@ -298,9 +259,6 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
             # Fallback: let LLM handle it
             print("[Intent:IMAGE] generate_image failed, falling back to LLM", flush=True)
 
-    # RAG: 检查用户是否有学习资料库
-    rag_context = await _get_rag_context(uid, messages[-1]["content"])
-
     async def generate():
         nonlocal title
         full_reply = ""
@@ -309,10 +267,7 @@ async def send(req: SendReq, user: dict = Depends(current_user)):
 
         # Phase 1: Stream LLM (filter diagram blocks)
         try:
-            system_prompt = _build_system_prompt(user)
-            if rag_context:
-                system_prompt += rag_context
-            async for chunk in chat_stream(messages, uid=uid, system=system_prompt):
+            async for chunk in chat_stream(messages, uid=uid, system=_build_system_prompt(user)):
                 full_reply += chunk
                 buf += chunk
 
@@ -439,13 +394,8 @@ async def send_deep(req: SendReq, user: dict = Depends(current_user)):
     for i, h in enumerate(history):
         content = processed if (h["role"] == "user" and i == last_idx) else h["content"]
         messages.append({"role": h["role"], "content": content})
-    # RAG: 检索用户资料 + 公共知识库，注入 system prompt（与 /send 一致）
-    rag_context = await _get_rag_context(uid, messages[-1]["content"])
-    system_prompt = _build_system_prompt(user)
-    if rag_context:
-        system_prompt += rag_context
     try:
-        full_reply = await chat_deep(messages, uid=uid, system=system_prompt)
+        full_reply = await chat_deep(messages, uid=uid, system=_build_system_prompt(user))
     except Exception as e:
         full_reply = f"[Deep error: {str(e)}]"
     clean_text, diagrams = _parse_diagrams(full_reply)
@@ -558,22 +508,13 @@ async def send_deep_stream(req: SendReq, user: dict = Depends(current_user)):
 
     async def stream_deep():
         full_reply = ""
-        # RAG: 检索用户资料 + 公共知识库，注入 system prompt（与 /send 一致）
-        rag_context = await _get_rag_context(uid, messages[-1]["content"])
-        system_prompt = _build_system_prompt(user)
-        if rag_context:
-            system_prompt += rag_context
         try:
-            async for chunk in chat_deep_stream(messages, uid=uid, system=system_prompt):
+            async for chunk in chat_deep_stream(messages, uid=uid, system=_build_system_prompt(user)):
                 full_reply += chunk
                 yield chunk
         except Exception as e:
             yield f"\n[Deep error: {str(e)}]"
             return
-
-        # 兜底：full_reply 是完整文本，再次归一化 LaTeX，修复流式 chunk 边界导致的转换不完整
-        from app.utils.deep_agent import _normalize_latex
-        full_reply = _normalize_latex(full_reply)
 
         clean_text, diagrams = _parse_diagrams(full_reply)
         image_urls = await _process_diagrams(diagrams)
@@ -755,20 +696,3 @@ async def remove_memory(mid: int, user: dict = Depends(current_user)):
         raise HTTPException(404, "记忆不存在")
     delete_memory(mid)
     return {"msg": "ok"}
-
-@router.post("/asr")
-async def speech_to_text(file: UploadFile = File(...), user: dict = Depends(current_user)):
-    """语音转文字：阿里云 NLS 语音识别（比 Qwen-Omni 快 10 倍+）"""
-    from app.utils.asr_ali import recognize
-
-    audio_bytes = await file.read()
-    if not audio_bytes:
-        raise HTTPException(400, "音频文件为空")
-    if len(audio_bytes) > 2 * 1024 * 1024:  # 2MB
-        raise HTTPException(400, "音频文件过大")
-
-    try:
-        text = await recognize(audio_bytes)
-        return {"text": text}
-    except Exception as e:
-        raise HTTPException(500, f"语音识别失败: {str(e)}")

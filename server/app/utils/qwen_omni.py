@@ -20,11 +20,44 @@ Your role:
 - Occasionally use emoji to make the chat feel warm
 
 Remember: the user is learning English, so speak clearly and naturally.
-Do NOT use markdown formatting in your replies."""
+Do NOT use markdown formatting in your replies.
+
+IMPORTANT: At the very end of EVERY reply, add a score line in this exact format on its own line:
+口语评分：<number>/100
+The score (0-100) should reflect the user's pronunciation, fluency, grammar and vocabulary in their latest utterance. Be fair and encouraging, typical range 60-95."""
+
+CHARACTER_PROMPTS = {
+    "teacher": """Role: You are a warm, patient English teacher (灵慧老师) helping a student practice spoken English. Follow these rules strictly:
+- Speak like a teacher: gentle, encouraging, step-by-step guidance
+- When the student makes an error, first praise what they did well, then gently point out the mistake and explain how to fix it (e.g. "很好，但注意这个单词的发音...")
+- Use teacher-style expressions: "Good job!", "Let's try again", "Pay attention to the pronunciation of..."
+- Simplify your language to the student's level and ask guiding questions
+- NEVER be casual or use slang; always maintain a teaching tone""",
+    "friend": """Role: You are a close, casual friend chatting with the user. Follow these rules strictly:
+- Speak like a friend: relaxed, warm, using everyday conversational language and casual expressions
+- Use contractions (I'm, gonna, wanna), light humor, and emoji occasionally
+- Share opinions as if chatting casually, ask casual follow-up questions
+- Never correct the student's grammar unless they explicitly ask
+- Keep the tone light and fun, like chatting over coffee""",
+    "examiner": """Role: You are a professional IELTS/TOEFL speaking examiner. Follow these rules strictly:
+- Speak formally and professionally, like a real exam setting
+- Ask the question directly and objectively without extra warmth
+- After the student answers, give a brief professional evaluation: fluency, vocabulary, grammar, pronunciation
+- Use exam-style expressions: "Could you tell me more about...?", "Let's move on to the next question"
+- Do NOT use emoji or casual language; maintain exam neutrality""",
+    "colleague": """Role: You are a professional work colleague in an English-speaking workplace. Follow these rules strictly:
+- Speak in business English: polite, professional, efficient
+- Use workplace expressions: "Let's schedule a meeting", "Could you follow up on this?", "I'd suggest we..."
+- Stay task-oriented and respectful
+- If the student uses informal language, gently model the professional alternative
+- Keep responses concise and work-related""",
+}
+
+
 
 
 async def chat_with_audio(audio_data: bytes, history: list = None, user_text: str = "",
-                          voice: str = "Cherry", speed: float = 1.0) -> dict:
+                          voice: str = "Cherry", speed: float = 1.0, question: str = "", character: str = "teacher") -> dict:
     """发送音频到 Qwen-Omni，返回 {'text': ..., 'audio_url': ..., 'history': [...]}"""
     audio_b64 = base64.b64encode(audio_data).decode()
     
@@ -33,7 +66,12 @@ async def chat_with_audio(audio_data: bytes, history: list = None, user_text: st
         {"text": user_text or "请理解我说的话并用英语自然回复"}
     ]
     
-    messages = [{"role": "system", "content": [{"text": SYSTEM_PROMPT}]}]
+    sys_prompt = SYSTEM_PROMPT
+    if character in CHARACTER_PROMPTS:
+        sys_prompt += f"\n\n{CHARACTER_PROMPTS[character]}"
+    if question:
+        sys_prompt += f"\n\nCurrent practice question the user is answering: {question}\nGuide the conversation around this question. Ask the question first if the user hasn't answered it yet, then discuss their answer."
+    messages = [{"role": "system", "content": [{"text": sys_prompt}]}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": content_parts})
@@ -73,9 +111,14 @@ async def chat_with_audio(audio_data: bytes, history: list = None, user_text: st
 
 
 async def chat_text_only(text: str, history: list = None,
-                         voice: str = "Cherry", speed: float = 1.0) -> dict:
+                         voice: str = "Cherry", speed: float = 1.0, question: str = "", character: str = "teacher") -> dict:
     """纯文本对话（无音频输入）"""
-    messages = [{"role": "system", "content": [{"text": SYSTEM_PROMPT}]}]
+    sys_prompt = SYSTEM_PROMPT
+    if character in CHARACTER_PROMPTS:
+        sys_prompt += f"\n\n{CHARACTER_PROMPTS[character]}"
+    if question:
+        sys_prompt += f"\n\nCurrent practice question the user is answering: {question}\nGuide the conversation around this question. Ask the question first if the user hasn't answered it yet, then discuss their answer."
+    messages = [{"role": "system", "content": [{"text": sys_prompt}]}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": [{"text": text}]})
@@ -128,3 +171,37 @@ async def text_to_speech(text: str, voice: str = "Cherry", speed: float = 1.0) -
         data = r.json()
         audio = data.get("output", {}).get("audio", {})
         return audio.get("url", "") or audio.get("data", "")
+
+
+async def transcribe_audio(audio_data: bytes, language: str = "auto") -> str:
+    """语音转文字（ASR）。发送音频到 Qwen-Omni，只要求转写，不回复。"""
+    audio_b64 = base64.b64encode(audio_data).decode()
+
+    prompt = "请把这段语音转写成文字，只输出转写结果，不要任何解释或回复。"
+    if language == "en":
+        prompt = "Transcribe this audio to text. Output ONLY the transcription, no extra words."
+
+    content_parts = [
+        {"audio": f"data:;base64,{audio_b64}"},
+        {"text": prompt}
+    ]
+    messages = [{"role": "user", "content": content_parts}]
+
+    headers = {"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": QWEN_MODEL, "input": {"messages": messages}}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(QWEN_DASHSCOPE_URL, headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
+
+    choices = data.get("output", {}).get("choices", [])
+    text = ""
+    if choices:
+        content = choices[0].get("message", {}).get("content", "")
+        if isinstance(content, list):
+            for part in content:
+                text += part.get("text", "") if isinstance(part, dict) else str(part)
+        else:
+            text = str(content)
+    return text.strip()

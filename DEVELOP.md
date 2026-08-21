@@ -1,10 +1,362 @@
 # ZLWL 智能聊天 — 开发文档
 
-> 最后更新：2026-07-27
+> 最后更新：2026-08-20
 
 ## 项目概述
 
 ZLWL（智领未来）是一个英语口语学习微信小程序，核心功能包括 AI 智能聊天和语音评测。用户可与 AI 自由对话、上传文件让 AI 分析，还能录音进行英语口语发音评测。
+
+## 2026-08-20 知识库 RAG 重构 — embedding 迁移阿里云 API + 上传全异步 + 切分死循环修复
+
+知识库/学习资料 RAG 系统整体重构：embedding 从本地 BGE 模型迁移到阿里云 DashScope API（零本地模型内存），知识库导入/文档上传全部异步化秒返，分批向量化防大文件 OOM，并修复切分死循环。
+
+### embedding 迁移（rag_service.py）
+- 从本地 `BAAI/bge-large-zh-v1.5`（sentence_transformers 加载 torch 模型耗内存）改为阿里云 DashScope `text-embedding-v4` API，复用 QWEN_API_KEY，维度 1024
+- 新增 `_embed_texts` 批量调 API（BATCH=10）；移除 HF_ENDPOINT / sentence_transformers 依赖
+- 修复 ChromaDB 拒绝空 metadata（Expected metadata to be a non-empty dict），填默认值 `{"source":"manual"}`
+- 新增 `create_collection` 方法（不触发 embedding，瞬时建集合）
+
+### 知识库管理后台异步化（admin.py / admin/index.html）
+- `/knowledge/{collection}/items` 手动导入改为后台 `_do_embed` 异步向量化，秒返 processing
+- 文档上传改为：存临时文件 → 后台 `_process_kb_upload` 解析 + 分批向量化（BATCH=8）+ 清理临时文件
+- 创建集合改用 `create_collection()`，不再用「插 dummy 再删」的方式
+- 前端提示文案改为「后台解析中，稍后刷新」+ 延迟刷新
+
+### 学习资料上传优化（material.py）
+- 新增 filename Form 参数接前端原始文件名；磁盘文件名清洗 `/`、`\` 防路径注入
+- `_process_material` 改为分批向量化（BATCH=8）
+- UPLOAD_DIR / 文件路径从 dev 路径切到正式路径
+
+### 切分死循环修复（material_parser.py）
+- CHUNK_SIZE 512→1000，去掉 128 重叠
+- `_split_chunks` 重写为 O(n) 单次遍历贪心累积，修复旧版「重叠回退」算法在无标点长段处死循环（8 万字跑 90 秒、内存涨到 2GB+）
+
+### 公共知识库检索（chat.py）
+- 从固定 `public_knowledge` 集合改为检索所有公共集合（排除 study_materials、oral_questions）
+
+### 路径修正（main.py）
+- admin 页面读取路径 dev → 正式路径
+
+涉及文件：
+- server/app/services/rag_service.py
+- server/app/services/material_parser.py
+- server/app/routers/admin.py
+- server/app/routers/material.py
+- server/app/routers/chat.py
+- server/app/main.py
+- admin/index.html
+
+
+## 2026-08-13 联网搜索接入 RAG 检索（知识库）
+
+联网搜索（🔍 qwen-max）此前不检索知识库，用户上传资料后在 🔍 模式问相关问题检索不到。补齐：三个端点统一先检索知识库再回答。
+
+- chat.py 的 /send-deep、/send-deep-stream 在调用 chat_deep/chat_deep_stream 前，加 `rag_context = await _get_rag_context(uid, messages[-1]["content"])` 拼进 system prompt，与 /send 保持一致
+- 检索两层：study_materials（用户私有资料，按 user_id 隔离）+ public_knowledge（公共知识库）
+
+涉及文件：
+- server/app/routers/chat.py
+
+## 2026-08-13 联网搜索公式适配 + TTS 并行合成 + 数学符号播报修复
+
+### 联网搜索（qwen-max）公式适配
+- `deep_agent.py` 重写：OpenRouter 失效后改用阿里云 qwen-max + enable_search（服务端自动联网），失败降级普通对话；新增 `_normalize_latex` 把 qwen 原生 `\(...\)` `\[...\]` 转成 `$...$` `$$...$$` 供 towxml 渲染；流式维护 pending 处理 chunk 边界切断的孤立反斜杠；timeout 300
+- `chat.py`：send_deep_stream 对完整 full_reply 兜底再归一化 LaTeX，修复流式边界转换不完整
+
+### TTS 播报修复
+- **根因1（长回答播报不出来）**：TTS 串行逐段合成，qwen 长回答（30-40 段）耗时 15-20 秒超前端 20 秒超时 → 改为并行合成（asyncio.gather + Semaphore 2 并发 + 失败重试 3 次 + 0.4s 间隔），40 段从约 20s 降至约 13s 全成功
+- **根因2（符号播报静音）**：阿里云 NLS 对 `<` `>` `≤` `≥` `≠` 等 Unicode 数学符号读成静音 → `_clean_latex` 补齐 Unicode 符号转换
+
+### `_clean_latex` 增强（qwen 联网搜索格式适配）
+- 前置归一化：`\dfrac`/`\cfrac`/`\tfrac` → `\frac`，`\operatorname` → 空，`\begin{cases}`/`\begin{matrix}` 等环境删除，`&` → "和"
+- 符号简写：`\ge` `\le` `\ne` `\lt` `\gt` `\implies` `\iff`
+- Unicode 符号：`≤ ≥ ≠ ≈ × ÷ √ π ∞ ± ° · → ⇒ ⇔` 及普通 `<` `>` → 中文
+
+### 教训
+- 阿里云 NLS 语音合成 QPS 限流严格：并发 2 安全，并发 3 即报 `TOO_MANY_REQUESTS`（40 段只成功 8 段）
+- NLS 对 Unicode 数学符号（≤ ≥ ≠ < > 等）合成成功但读成静音，播报前必须显式转中文
+
+涉及文件：
+- server/app/routers/voice.py
+- server/app/routers/chat.py
+- server/app/utils/deep_agent.py
+
+## 2026-08-13 学习资料上传异步化 + 文件分段句子边界优化
+
+学习资料上传从同步阻塞改为异步秒返，文件分段从固定长度硬切改为按句子边界切分，减少语义断裂。
+
+- **上传异步化**：`material.py` 的 upload 端点改用 BackgroundTasks，保存文件后立即返回 `processing`，后台线程解析+向量化完成后更新为 `ready`。上传响应从 30-60 秒（同步向量化）降至 ~57ms
+- **分段句子边界**：`material_parser.py` 的 `_split_chunks` 重写——在目标 512 字符区间内找最靠后的句子结束符（。！？!?；;.）作为切点，保证段落结尾是完整句子；段间 128 字符重叠并对齐句子边界；无标点时退回固定长度滑动窗口
+- 修复 Dev 实例 ChromaDB 索引丢失（chroma.sqlite3 被 git 误提交后 checkout 覆盖），从 MariaDB 重新向量化恢复 84 条题库
+- 教训：服务器 3.7G 内存，独立脚本加载 bge 模型批量向量化会 OOM 拖垮服务，向量化一律走服务进程内 API（BackgroundTasks 复用单例模型），不跑独立重建脚本
+
+涉及文件：
+- `server/app/routers/material.py`
+- `server/app/services/material_parser.py`
+
+## 2026-08-12 口语测评题库化 + 管理后台题库分类
+
+口语测评文本从LLM实时生成改为数据库预制管理，管理后台按类型（oral/voice）区分对练题库和测评题库。
+
+- **数据库**：oral_question_banks 表新增 type 字段（oral/voice），现有题库已标注
+- **新增 5 个语音测评题库**：日常/CET4/CET6/托福/雅思（bank_id 5-9），LLM 生成 30 篇种子文本
+- **修改 app/routers/voice.py**：/text 端点改为 ORDER BY RAND() 从数据库取文本，LLM 生成降级为兜底
+- **修改 app/routers/oral_question.py**：/banks 端点支持 ?type=oral/voice 筛选，oral_create_bank 增加 type 参数
+- **修改 app/routers/admin.py**：OralBankCreate 增加 type 字段，admin oral banks 返回 type
+- **修改 app/main.py**：修复 Dev 实例 admin HTML 路径指向 Online 的 bug
+- **修改 admin/index.html**：题库列表按类型分组（🎤 口语对练 / 🎙️ 语音测评），新建题库增加类型选择器
+
+涉及文件：
+- server/app/routers/voice.py
+- server/app/routers/oral_question.py
+- server/app/routers/admin.py
+- server/app/main.py
+- admin/index.html
+
+## 2026-08-12 管理后台全面增强 — 题库管理 + 知识库管理
+
+管理后台从单一用户管理扩展为三模块（用户/题库/知识库），支持完整 CRUD + 分页 + 多选批量操作 + 文档上传异步解析。
+
+### 后端改动
+- **`app/routers/admin.py`**（+180 行）：新增 18 个管理端点
+  - 口语题库：banks CRUD（4个）+ questions CRUD + 批量删除（4个）
+  - 知识库：collections 列表/创建/删除 + items 增删改/批量删除 + 语义搜索 + 文档上传
+  - 上传端点使用 FastAPI BackgroundTasks 异步处理向量化（BGE 模型慢，不阻塞前端）
+- **`app/routers/oral_question.py`**（+80 行）：新增 6 个 CRUD 函数（oral_create_bank/update/delete, oral_create_question/update/delete），操作 MariaDB 同时同步 ChromaDB
+- **`app/routers/chat.py`**：`_get_rag_context()` 增加公共知识库检索 — 同时搜索 `study_materials`（私有） + `public_knowledge`（公共），两部分结果合并注入 system prompt
+- **`app/services/rag_service.py`**：新增 `list_items()` 方法 — 分页列出 ChromaDB 集合中文档（支持管理后台浏览）
+
+### 管理后台前端
+- **`admin/index.html`**（重写，586→536 行）：三 tab 架构（用户管理/题库管理/知识库）
+  - 题库管理：左侧题库列表 → 右侧题目表格，每题增删改，每 30 题分页，复选框多选 + 全选 + 批量删除
+  - 知识库管理：集合选择 → 条目分页浏览/语义搜索/逐条删除/批量删除/文本导入/文档上传（PDF/Word/TXT 自动解析分段入库）
+  - 自动检测 `/dev/` 路径前缀，同一份 HTML Dev/Online 通用
+  - Token localStorage 持久化，刷新不丢登录态
+  - 修复 modal-bg 的 display:flex 覆盖 .hidden 导致白屏遮挡
+  - 修复 API 路径未加 /dev 前缀导致请求打到 Online 实例
+
+涉及文件：
+- `server/app/routers/admin.py`
+- `server/app/routers/oral_question.py`
+- `server/app/routers/chat.py`
+- `server/app/services/rag_service.py`
+- `admin/index.html`
+
+## 2026-08-11 Phase 1.3 学习资料库（私有 RAG）
+
+用户上传 PDF/Word/TXT 学习资料 → 自动解析分段 → 向量化入库 → 聊天时自动检索注入上下文。
+
+- **安装依赖**：PyMuPDF 1.28 + python-docx 1.2
+- **数据库**：新增 `user_materials` 表（user_id/filename/file_url/chunks_count/status）
+- **新增 `app/services/material_parser.py`**：PDF(fitz)/Word(python-docx)/TXT 解析 → 512字符+128重叠滑动窗口分段
+- **新增 `app/models/material.py`**：资料 CRUD（add/update_status/list/delete）
+- **新增 `app/routers/material.py`**：3个API — POST /upload（文件接收+解析+向量化）, GET /list, DELETE /{id}
+- **修改 `app/routers/chat.py`**：`_get_rag_context()` 函数，发送消息前按 user_id 检索 ChromaDB `study_materials` 集合，top-3 结果注入 system prompt
+- **修改 `app/main.py`**：注册 material 路由
+- 修复 `@router.post` 装饰器误挂在帮手函数导致 422（`_get_rag_context` 插到装饰器与 send 之间）
+
+涉及文件：
+- `server/app/services/material_parser.py`（新）
+- `server/app/models/material.py`（新）
+- `server/app/routers/material.py`（新）
+- `server/app/routers/chat.py`
+- `server/app/main.py`
+
+## 2026-08-10 Phase 1.2 分场景口语题库
+
+预置 4 个场景题库（K12口语考试/日常对话/职场英语/雅思托福），LLM 批量生成 24 道种子题，接入 RAG 语义检索。
+
+- **数据库**：新增 `oral_question_banks`（4个场景分类）+ `oral_questions`（24道题，含 topic/difficulty/reference_answer/keywords）
+- **新增 `app/routers/oral_question.py`**：3 个 API — GET /banks, GET /questions（按bank_id/difficulty筛选）, GET /search（RAG语义搜索）
+- **修改 `app/main.py`**：注册 oral_question 路由
+- 种子题：调用 DeepSeek 生成（4场景×6题），入库 MariaDB + 向量化到 ChromaDB `oral_questions` 集合
+- **口语对练人物设定**：`qwen_omni.py` 新增 CHARACTER_PROMPTS（teacher/friend/examiner/colleague 4种口吻），`voice.py` ChatReq 加 character 字段
+- **练习题目注入**：`voice.py` + `qwen_omni.py` 支持 question 字段，AI 围绕当前题目引导对话
+- **评分输出**：SYSTEM_PROMPT 要求每条回复末尾输出 `口语评分：XX/100`，前端解析做平均分统计
+- 图片理解从 OpenRouter 切换为 Qwen 直连（OPENROUTER 失效），`_vision_call` 改用 QWEN_API_KEY/QWEN_BASE_URL/qwen3.5-omni-flash
+
+涉及文件：
+- `server/app/routers/oral_question.py`（新）
+- `server/app/routers/voice.py`
+- `server/app/utils/qwen_omni.py`
+- `server/app/utils/llm_client.py`
+- `server/app/main.py`
+
+## 2026-08-10 Phase 0 RAG 知识库底层搭建
+
+搭建基于 ChromaDB + BGE 的可复用向量检索引擎，为后续错题本/题库/资料库功能提供统一底座。
+
+- **技术选型**：ChromaDB 1.5.9（PersistentClient，本地持久化）+ BAAI/bge-small-zh-v1.5（512维，95MB）
+- **新增 `app/services/rag_service.py`**（~155行）：单例服务，封装 add/search/delete/count/delete_collection/list_collections，懒加载 embedding 模型
+- **新增 `app/routers/knowledge.py`**（~95行）：5个API端点 — GET /collections, GET /{collection}/count, POST /import, POST /search, DELETE /{collection}/{id}
+- **修改 `app/main.py`**：注册 knowledge 路由 + startup 事件初始化 RAGService + 修正 RECEIVE_DIR 为 dev 路径
+- **修改 `server/requirements.txt`**：新增 chromadb、sentence-transformers 依赖
+- 模型通过 hf-mirror.com 镜像下载（HF 直连被墙），bge-large 因内存不足降级为 bge-small
+- 停止未使用的 OpenClaw 进程（~487MB），为 bge 模型腾内存
+- 性能：1000条语义检索 ~250ms，metadata 过滤正常
+- 前端验证：微信开发者工具 wx.request 联调通过
+
+涉及文件：
+- `server/app/services/rag_service.py`（新）
+- `server/app/routers/knowledge.py`（新）
+- `server/app/main.py`
+- `server/requirements.txt`
+
+
+## 2026-08-10 Phase 1.1 错题本（SM-2 间隔重复）
+
+实现完整的错题收录→复习闭环，用户可将 AI 对话中的问答加入错题本，按 SM-2 算法安排间隔复习。
+
+- **数据库**：新增 `mistake_books` 表（13 字段，含 interval_days/ease_factor/repetitions SM-2 算法列），索引 idx_user_review(user_id, next_review_at)
+- **新增 `app/models/mistake.py`**（~110 行）：数据层 — add/list_all/review_today/review_count/sm2_update/delete，使用 `with get_db() as db:` 模式（DictCursor）
+- **新增 `app/routers/mistake.py`**（~85 行）：5 个 API — POST /add, GET /review, GET /review-count, POST /{id}/rate, DELETE /{id}
+- **修改 `app/main.py`**：注册 mistake 路由
+- **SM-2 算法**：评分 1-5，≥3 分按 (ease, reps, interval) 计算下次复习（1→6→16→35天递增），<3 分重置为 1 天；ease 下限 1.3
+- 修复 get_db() context manager 误用（`db = get_db()` → `with get_db() as db:`）导致 500
+- 修复 pymysql DictCursor 双重 dict 转换 bug（`dict(zip(...))` 覆盖真实值）
+- 禁用 OpenClaw 网关（.env 注释 OPENCLAW_TOKEN），杀死占用 487MB 的 OpenClaw 进程，LLM 回退 deepseek-chat 直连
+- 修复 nginx /static/ 指向 Dev uploads（error_page 404 = @static_online 回退 Online）
+
+涉及文件：
+- `server/app/models/mistake.py`（新）
+- `server/app/routers/mistake.py`（新）
+- `server/app/main.py`
+- `server/.env`（注释 OpenClaw 配置）
+## 2026-08-10 深度搜索降级修复
+
+### 问题
+OpenRouter API Key 失效（401 "User not found"），深度搜索报错 `[Deep error: OpenRouter error 401: ...]`。
+
+### 解决
+`deep_agent.py` 重写：OpenRouter 调用失败时自动降级为普通 DeepSeek 对话（通过 `chat_stream`），不再抛异常。
+深度搜索按钮仍可用，只是联网搜索暂不可用（待新 API Key）。
+
+涉及文件：
+- `server/app/utils/deep_agent.py` — try/except 包裹 OpenRouter 调用，失败降级
+
+## 2026-08-10 图片理解切换为 Qwen VL 直连
+
+### 问题
+OpenRouter API Key 失效导致图片理解（视觉描述）不可用。
+
+### 解决
+`_vision_call` 改用阿里云百炼 Qwen MaaS 直连（`qwen-vl-max`），本地下载图片转 base64 发送。
+`chat_stream`/`chat` 中的 `OPENROUTER_KEY` 检查替换为 `QWEN_API_KEY`。
+
+涉及文件：
+- `server/app/utils/llm_client.py` — _vision_call 重写 + 条件替换
+
+## 2026-08-10 深度搜索降级修复
+
+### 问题
+OpenRouter API Key 失效（401 "User not found"），深度搜索报错 `[Deep error: OpenRouter error 401: ...]`。
+
+### 解决
+`deep_agent.py` 重写：OpenRouter 调用失败时自动降级为普通 DeepSeek 对话（通过 `chat_stream`），不再抛异常。
+深度搜索按钮仍可用，只是联网搜索暂不可用（待新 API Key）。
+
+涉及文件：
+- `server/app/utils/deep_agent.py` — try/except 包裹 OpenRouter 调用，失败降级
+
+## 2026-08-05 TTS公式语音清洗（方案E 正则）
+
+voice.py `/tts` 端点新增 `_clean_latex()` + `_match_brace()` — 文本送阿里NLS前用Python正则将LaTeX公式转为口语化中文。
+- `\frac{a}{b}` → "b分之a"（栈匹配花括号处理嵌套）
+- `x^{n}` / `x^2` → "x的n次方"/"x的2次方"
+- `\sqrt[n]{x}` / `\sqrt{x}` → "x开n次方"/"根号x"
+- `x_{n}` / `x_1` → "x下标n"/"x下标1"
+- 希腊字母、符号命令翻译、$$/$包裹符剥离
+- 连续拉丁字母间插空格防TTS连读（mc → m c）
+
+
+## 2026-08-06 负号翻译
+
+### 调整 (voice.py _clean_latex 7.6)
+- `-5` → 负5；`-0.5` → 负0.5；`-x` → 负x（前面是数字/字母/右括号时判为减法，保留不动，如 x-5）
+- 涉及文件：`server/app/routers/voice.py`
+
+## 2026-08-06 括号不再播报
+
+### 调整 (voice.py _clean_latex)
+- 所有括号命令直接删除、不播报：\left( \right) \big 系列、\{ \}（集合）、\langle \rangle（内积）、\lfloor \rfloor（取整）、普通 ASCII () [] {}
+- 保留语义：\left| x \right| → x的绝对值、\mid → 满足
+- 普通括号删除放在 \text{} 清理之后，避免破坏 \text{...} 正则匹配
+- 涉及文件：`server/app/routers/voice.py`
+
+## 2026-08-06 语音播报生动性优化（停顿 + 语速 + prompt 引导）
+
+### 停顿注入 (voice.py)
+- `_split_sentences` 重写：max_len 200 → 80，返回 [(text, para_end)]，段落边界就地结算不混段
+- 新增 `_pause_ms()`：按句末标点映射停顿 —— 段落 500ms / 。！？… 400ms / .!? 500ms / ；; 350ms / ：: 300ms / 逗号 200ms / 、 150ms / 默认 300ms（2026-08-06 段落 800→500、句号 600→400 试听微调）
+- `/tts` 返回每段 `pauseMs` 字段，前端播完该段后按此停顿再播下一段
+
+### 语速/音调 (tts_ali.py)
+- `speech_rate` 0 → -10（略慢、更从容）；`pitch_rate` 0 → 5（略高、更亲切）
+- TTS 缓存 key 加版本 `tts_v2|` 前缀，强制旧缓存失效，新参数生效
+
+### AI 输出引导 (chat.py)
+- `_build_system_prompt` 新增 [语音播报要求]：多用短句（≤40字）、口语化语气词、段落分明空行分隔、避免超长复合句
+
+涉及文件：
+- `server/app/routers/voice.py`
+- `server/app/utils/tts_ali.py`
+- `server/app/routers/chat.py`
+- 前端 `message-bubble.js`/`chat.js`（见前端开发日志）
+
+## 2026-08-06 TTS LaTeX 括号翻译
+
+### 括号命令口语化 (voice.py _clean_latex)
+- `\left(` `\right)` `\big(` 系列 → 左括号/右括号；`\left[` 系列 → 左中括号/右中括号
+- `\{` `\}`（集合）→ 左花括号/右花括号；`\langle` `\rangle` → 左尖括号/右尖括号
+- `\left| x \right|` 配对 → x的绝对值；`\lvert`/`\rvert`/`\vert`/`\Vert` → 竖线
+- `\lfloor`/`\rfloor`/`\lceil`/`\rceil` → 取整符号；`\mid` → 满足
+- 普通 ASCII `()` `[]` `{}` 也翻译为左/右括号（全角中文标点不受影响）
+- `(x+1)^2` / `(x+1)^{2}` → (x+1)的2次方（括号后跟上标补充处理）
+- 残留的 `\left`/`\right` 命令（后跟未覆盖符号时）自动清除
+- 涉及文件：`server/app/routers/voice.py`
+
+## 2026-08-06 SVG 图表渲染规范优化
+
+### SVG 规范调整 (diagram_prompt.py)
+- DIAGRAM_SYSTEM_PROMPT 追加约束：SVG 内部组件尽量浅色背景+黑色文字，禁止深色背景+黑色文字
+- 原因：深色背景配黑色文字导致图表内容不可读
+- 涉及文件：
+  - 修改 `server/app/utils/diagram_prompt.py`
+
+## 2026-08-06 TTS语音播报全面优化 + LaTeX渲染修复
+
+### TTS 清洗管线 (`voice.py`)
+
+`/tts` 端点新增三层清洗管线：`_clean_units()` → `_clean_markdown()` → `_clean_latex()` → 阿里NLS
+
+#### _clean_units() — 计量单位过滤（50+单位）
+- 长度：nm/mm/cm/dm/km/m、面积/体积复合单位
+- 重量：t/kg/mg/g
+- 温度：°C/°F/K/°(角度)
+- 电学：V/A/W/Hz/Ω 及 kV/mA/kW/GHz 等
+- 力/压强/能量：N/Pa/J/cal 及 kN/MPa/kJ/kcal
+- 时间：ms/s/min/h、容积：mL/L
+- 其他：mol/dB/mAh/kWh/Mbps
+
+#### _clean_markdown() — Markdown格式过滤
+- **粗体** *斜体* `代码` ```代码块``` ~~删除~~
+- ##标题、-列表、1.有序、>引用、---水平线
+- [链接](url) → 文字
+
+#### _clean_latex() — LaTeX公式翻译
+- \frac、\sqrt、幂/下标（栈匹配花括号处理嵌套）
+- 希腊字母音译、符号命令（×÷±∞∑∫lim→≠≈≥≤）
+- 三角函数音译：\sin→萨茵、\cos→口萨茵、\tan→探针特、\arcsin→阿克萨茵等
+- 对数：\log→烙格、\ln→烙恩
+- 集合：∀∃∈∪∩∅、几何：∠△∥⊥≅≡、推理：∴∵⇒⇔
+- 省略号：\ldots/\cdots、向量：\vec/\overrightarrow
+- 微积分：∇梯度、∂偏导、∝正比于
+
+### LaTeX SVG 渲染修复 (`latex_server.js` + `latex_proxy.py`)
+- 背景 #000 → transparent（公式透明底）
+- CSS 选择器 path/text/use → *（覆盖 line/rect 分数线）
+- 缓存 key 加版本号 v2 强制刷新
+
 
 ## 系统架构
 
@@ -516,3 +868,63 @@ mysql -S /tmp/mysql.sock -u root -p
 ### AI 角色预设
 - 更新 `DIAGRAM_SYSTEM_PROMPT`，添加身份设定和自我介绍规范
 - 禁止 AI 提及 OpenClaw、DeepSeek 等底层技术信息
+
+## 2026-08-04 语音播报 + ASR 语音转文字
+
+### 语音播报 (TTS)
+- 前端 AI 气泡新增 🔊 播报按钮，点击调 `/api/v1/voice/tts`（阿里云 NLS），分段播放
+- 导航栏新增 🔊/🔇 全局自动播放开关，开启后 AI 回复完自动播报
+- 开关状态持久化到 `wx.Storage`
+- 深度模式按钮从导航栏移至输入栏发送按钮旁，避免导航栏拥挤
+- 默认音色从 `xiaoyun` 换为 `ruoxi`（若溪，更自然）
+- TTS 缓存自动清理：超过 200 个文件或 7 天未访问自动删除，每小时扫描一次
+
+### 语音转文字 (ASR)
+- 新增 `/api/v1/chat/asr` 端点：长按输入框录音 → 上传 → 阿里云 NLS 识别 → 自动发送
+- 新增 `server/app/utils/asr_ali.py`，复用 tts_ali 的 token 管理
+- 比之前用 Qwen-Omni 方案快 10 倍+
+
+### 前端 UI 调整
+- 输入栏整体放大：按钮 60→72rpx，字号 28→30rpx，内边距增大
+- 键盘弹起仍正确抬升，不覆盖输入框
+
+涉及文件：
+- 新增 `server/app/utils/asr_ali.py`
+- 修改 `server/app/utils/tts_ali.py` — 缓存清理 + 默认音色
+- 修改 `server/app/routers/chat.py` — ASR 端点
+- 修改 `server/app/routers/voice.py` — 默认音色
+- 前端多项（见前端开发日志）
+
+
+
+## 2026-08-04 LaTeX 渲染升级 + 深度搜索修复 + 华为兼容
+
+### LaTeX 公式渲染：codecogs → 本地 MathJax 3
+- 原因：codecogs 海外服务从阿里云北京经常超时，首次公式渲染慢且不稳定
+- 新增 `latex_render.js`（MathJax 3 Node 脚本）+ `latex_server.js`（常驻 HTTP 服务，端口 9123）
+- 重写 `latex_proxy.py`：不再转发 codecogs，改调本地 MathJax
+- 效果：首次渲染从 ~400ms（spawn 子进程）降至 ~20ms（常驻服务），快了 20 倍
+- 公式统一黑底白字，深色主题友好
+- 启动方式：`cd /opt/wx-miniapp-ai/server && bash start_latex.sh`
+
+### 深度搜索修复
+- 问题：deep_agent.py 用 DuckDuckGo HTML 抓取做联网搜索，阿里云北京连不上
+- 修复：重写 `deep_agent.py`，改用 OpenRouter `deepseek/deepseek-chat:online`
+- DeepSeek 原生联网搜索，结果自动注入回复，带引用链接
+- 去掉了本地 DuckDuckGo + code_exec 工具循环，代码从 213 行精简到 ~70 行
+
+### TTS 音色 + 缓存清理
+- 默认音色 `xiaoyun` → `ruoxi`（若溪），更自然
+- TTS 缓存自动清理：超过 200 个文件或 7 天未访问自动删除
+
+### 前端大改（见前端开发日志）
+- tabBar 移到顶部导航栏内，底部彻底干净
+- 华为真机兼容：100vh→100%、safeArea 兜底、全局键盘监听
+- 语音录音路由守卫、TTS 文本清洗、图片预览等
+
+涉及文件：
+- 新增 `server/app/utils/latex_render.js`、`server/app/utils/latex_server.js`、`server/app/utils/start_latex.sh`
+- 重写 `server/app/utils/deep_agent.py`
+- 修改 `server/app/routers/latex_proxy.py`
+- 前端多项
+
